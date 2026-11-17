@@ -194,6 +194,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
       <button class="btn sec" id="imJson">JSON importieren</button>
       <button class="btn sec" id="exTtl">Als RDF (Turtle)</button>
       <button class="btn sec" id="cpTtl">Turtle kopieren</button>
+      <button class="btn sec" id="unhide">Ausgeblendete Vorschläge zurückholen</button>
       <button class="btn warn" id="reset">Alles löschen</button>
     </div>
     <input type="file" id="file" accept="application/json,.json" hidden>
@@ -216,7 +217,18 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 "use strict";
 /* ---------- storage ---------- */
 const S_KEY = 'wikigraph.v1';
-const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {} });
+const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {}, hidden: [] });
+/* identifier / meta articles that are linked from citations, not topics */
+const IDENT = new Set([
+  'Digital Object Identifier', 'DOI', 'Internationale Standardnummer für fortlaufende Sammelwerke', 'ISSN', 'Internationale Standardbuchnummer', 'ISBN',
+  'PubMed', 'PMID', 'PubMed Central', 'PMC', 'ArXiv', 'Bibcode', 'Online Computer Library Center', 'OCLC', 'Gemeinsame Normdatei', 'GND',
+  'Virtual International Authority File', 'VIAF', 'Library of Congress Control Number', 'LCCN', 'Zeitschriftendatenbank', 'JSTOR', 'Wikidata',
+  'Handle-System', 'Handle System', 'Uniform Resource Name', 'Semantic Scholar', 'Open Researcher and Contributor ID', 'ORCID', 'Deutsche Nationalbibliothek',
+  'International Standard Name Identifier', 'ISNI', 'Wayback Machine', 'Internet Archive', 'Liste der IPA-Zeichen', 'Liste der Zeichen des Internationalen Phonetischen Alphabets',
+  'Internationales Phonetisches Alphabet', 'International Phonetic Alphabet', 'Help:IPA', 'Mathematical Reviews', 'ZbMATH', 'ZbMATH Open', 'Zentralblatt MATH',
+  'Hochschulbibliothekszentrum', 'Bibliotheksverbund Bayern', 'Karlsruher Virtueller Katalog', 'Systematik der Bibliothek'
+]);
+const isIdent = t => IDENT.has(t) || /\((identifier|Identifikator)\)$/i.test(t) || /^(ISBN|ISSN|DOI|PMID|OCLC|ASIN)\b/.test(t);
 function load() {
   try { const r = localStorage.getItem(S_KEY); if (r) return Object.assign(blank(), JSON.parse(r)); } catch (e) {}
   return blank();
@@ -400,9 +412,10 @@ async function openArticle(lang, title, from) {
     if (h.startsWith('/wiki/')) {
       const lt = hrefTitle(h);
       if (lt && ns0.has(lt)) {
+        const meta = isIdent(lt) || a.closest('ol.references, .references, .reflist, .mw-references-wrap, .reference-text, cite, .citation, .IPA, .hatnote, .dablink, .ext-phonos');
         a.dataset.wt = lt; a.setAttribute('href', '#');
         if (db.nodes[resolve(K(lang, lt))]) a.classList.add('seen');
-        if (lt !== t && !seen.has(lt)) { seen.add(lt); out.push(lt); }
+        if (!meta && lt !== t && !seen.has(lt)) { seen.add(lt); out.push(lt); }
       } else { a.setAttribute('href', `https://${lang}.wikipedia.org${h}`); a.target = '_blank'; a.rel = 'noopener'; }
     } else if (h.startsWith('/')) { a.setAttribute('href', `https://${lang}.wikipedia.org${h}`); a.target = '_blank'; a.rel = 'noopener'; }
     else if (!h.startsWith('#')) { a.target = '_blank'; a.rel = 'noopener'; }
@@ -545,6 +558,7 @@ $('article').addEventListener('click', e => {
 function analyze(tMax) {
   const vis = Object.keys(db.nodes).filter(k => db.nodes[k].first <= tMax);
   const visSet = new Set(vis);
+  const hidden = new Set(db.hidden || []);
   const pairs = new Map(), links = [];
   const pk = (a, b) => a < b ? a + '|' + b : b + '|' + a;
   for (const e of db.edges) {
@@ -558,8 +572,9 @@ function analyze(tMax) {
   for (const a of vis) {
     const n = db.nodes[a];
     for (const o of (n.out || [])) {
+      if (isIdent(o)) continue;
       const k = resolve(K(n.lang, o));
-      if (k === a) continue;
+      if (k === a || hidden.has(k)) continue;
       if (visSet.has(k)) {
         const id = pk(a, k);
         if (!pairs.has(id)) { const nl = { s: a, t: k, type: 'sem', c: 1 }; pairs.set(id, nl); links.push(nl); }
@@ -832,7 +847,7 @@ function select(n) {
   if (n.ghost) {
     html = `<div class="st">${esc(n.title)}</div>
       <div class="sm">Noch nicht gelesen · verlinkt von ${n.c} deiner Artikel</div>
-      <button class="btn" data-open>Lesen</button> <button class="btn sec" data-close>Schließen</button>`;
+      <button class="btn" data-open>Lesen</button> <button class="btn sec" data-hide>Nicht mehr vorschlagen</button> <button class="btn sec" data-close>Schließen</button>`;
   } else {
     const d = db.nodes[n.key];
     html = `<div class="st">${esc(n.title)}</div>
@@ -844,6 +859,8 @@ function select(n) {
   sh.innerHTML = html; sh.classList.add('on');
   sh.querySelector('[data-open]').onclick = () => openTitle(n.lang, n.title, null);
   sh.querySelector('[data-close]').onclick = closeSheet;
+  const hb = sh.querySelector('[data-hide]');
+  if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
   sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
 }
 function closeSheet() { G.sel = null; $('sheet').classList.remove('on'); requestDraw(); }
@@ -897,6 +914,7 @@ $('file').onchange = async e => {
     for (const x of d.edges || []) if (!seen.has(x.f + '|' + x.t + '|' + x.ts)) db.edges.push(x);
     db.edges.sort((a, b) => a.ts - b.ts);
     Object.assign(db.alias, d.alias || {});
+    db.hidden = [...new Set([...(db.hidden || []), ...(d.hidden || [])])];
     for (const k in d.pos || {}) if (!db.pos[k]) db.pos[k] = d.pos[k];
     save(); G.dirty = true; G.fitted = false; renderMore(); toast('Import erfolgreich');
   } catch (err) { toast('Datei konnte nicht gelesen werden'); }
@@ -924,6 +942,7 @@ function ttl() {
 }
 $('exTtl').onclick = () => download(`wikigraph-${stamp()}.ttl`, ttl(), 'text/turtle');
 $('cpTtl').onclick = async () => { try { await navigator.clipboard.writeText(ttl()); toast('Turtle kopiert'); } catch (e) { toast('Kopieren nicht möglich'); } };
+$('unhide').onclick = () => { const c = (db.hidden || []).length; db.hidden = []; save(); G.dirty = true; toast(c ? c + ' Vorschläge wieder sichtbar' : 'Keine ausgeblendeten Vorschläge'); };
 $('reset').onclick = () => {
   const b = $('reset');
   if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = 'Wirklich alles löschen?'; setTimeout(() => { delete b.dataset.armed; b.textContent = 'Alles löschen'; }, 4000); return; }
