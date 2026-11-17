@@ -56,6 +56,11 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 #article{padding:4px 16px 40px;font-size:17px;line-height:1.62;overflow-wrap:break-word}
 #article h1.at{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:28px;line-height:1.2;margin:14px 0 10px}
 #article h2{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:23px;border-bottom:1px solid var(--line);padding-bottom:4px;margin:28px 0 10px}
+#article details.sec>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);margin:22px 0 10px}
+#article details.sec>summary::-webkit-details-marker{display:none}
+#article details.sec>summary::before{content:"";flex:none;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;margin:0 4px 0 2px}
+#article details.sec[open]>summary::before{transform:rotate(45deg)}
+#article details.sec>summary h2{border:0;margin:0;padding:4px 0 6px;flex:1}
 #article h3{font-size:18px;margin:20px 0 6px}
 #article a{color:var(--accent);text-decoration:none}
 #article a.seen{color:var(--accent2);background:#f1ecf7;border-radius:3px}
@@ -402,7 +407,36 @@ async function openArticle(lang, title, from) {
   art.innerHTML = '';
   const h1 = document.createElement('h1'); h1.className = 'at'; h1.innerHTML = p.displaytitle || esc(t);
   art.appendChild(h1);
+  makeSections(root);
   art.appendChild(root);
+  if (root.querySelector('details.sec')) {
+    const tg = document.createElement('a'); tg.href = '#'; tg.textContent = 'alle aufklappen';
+    tg.onclick = e => {
+      e.preventDefault();
+      const ds = [...art.querySelectorAll('details.sec')], open = ds.some(d => !d.open);
+      ds.forEach(d => d.open = open); tg.textContent = open ? 'alle zuklappen' : 'alle aufklappen';
+    };
+    $('rmeta').appendChild(tg);
+  }
+}
+/* wrap every h2 chapter into a collapsible <details>, like mobile Wikipedia */
+function makeSections(root) {
+  const box = root.querySelector('.mw-parser-output') || root;
+  const isH2 = el => el.tagName === 'H2' || (el.classList && el.classList.contains('mw-heading2')) || (el.tagName === 'DIV' && el.firstElementChild && el.firstElementChild.tagName === 'H2' && el.classList.contains('mw-heading'));
+  let det = null, body = null;
+  for (const el of [...box.children]) {
+    if (isH2(el)) {
+      const h2 = el.tagName === 'H2' ? el : el.querySelector('h2');
+      det = document.createElement('details'); det.className = 'sec';
+      box.insertBefore(det, el);
+      const sum = document.createElement('summary');
+      sum.appendChild(h2);
+      det.appendChild(sum);
+      body = document.createElement('div'); body.className = 'secbody';
+      det.appendChild(body);
+      if (el !== h2) el.remove();
+    } else if (det) body.appendChild(el);
+  }
 }
 $('article').addEventListener('click', e => {
   const a = e.target.closest('a'); if (!a) return;
@@ -410,7 +444,10 @@ $('article').addEventListener('click', e => {
   else if (a.dataset.anchor) {
     e.preventDefault();
     const el = $('article').querySelector('[id="' + CSS.escape(a.dataset.anchor) + '"]');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (el) {
+      let d = el.closest('details'); while (d) { d.open = true; d = d.parentElement.closest('details'); }
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 });
 
