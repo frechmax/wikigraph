@@ -53,26 +53,39 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .icobtn svg{width:22px;height:22px}
 .rmeta{font-size:13px;color:var(--muted);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .rmeta a{color:var(--accent)}
-#article{padding:4px 16px 40px;font-size:17px;line-height:1.62;overflow-wrap:break-word}
-#article h1.at{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:28px;line-height:1.2;margin:14px 0 10px}
-#article h2{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:23px;border-bottom:1px solid var(--line);padding-bottom:4px;margin:28px 0 10px}
-#article details.sec>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);margin:22px 0 10px}
+#article{padding:2px 14px 32px;font-size:16px;line-height:1.45;overflow-wrap:break-word}
+#article p{margin:0 0 .6em}
+#article ul,#article ol{margin:.3em 0 .6em;padding-left:1.3em}
+#article li{margin:.1em 0}
+#article dl{margin:.4em 0}
+#article h1.at{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:26px;line-height:1.15;margin:10px 0 8px}
+#article h2{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:20px;border-bottom:1px solid var(--line);padding-bottom:3px;margin:16px 0 6px}
+#article details.sec>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line);margin:0;padding:2px 0}
 #article details.sec>summary::-webkit-details-marker{display:none}
 #article details.sec>summary::before{content:"";flex:none;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;margin:0 4px 0 2px}
 #article details.sec[open]>summary::before{transform:rotate(45deg)}
-#article details.sec>summary h2{border:0;margin:0;padding:4px 0 6px;flex:1}
-#article h3{font-size:18px;margin:20px 0 6px}
+#article details.sec>summary h2{border:0;margin:0;padding:7px 0 6px;flex:1;line-height:1.2}
+#article details.sec[open]>.secbody{padding:8px 0 4px}
+#article .mw-parser-output>p+details.sec,#article .mw-parser-output>*+details.sec{margin-top:10px}
+#article h3{font-size:17px;margin:14px 0 4px}
+#article h4{font-size:16px;margin:12px 0 4px}
 #article a{color:var(--accent);text-decoration:none}
 #article a.seen{color:var(--accent2);background:#f1ecf7;border-radius:3px}
 #article a.new{color:#b0413e}
 #article img{max-width:100%;height:auto}
+#article figure img,#article .thumbinner img{display:block;margin:0 auto}
 #article table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse;font-size:14px}
 #article td,#article th{padding:4px 6px;vertical-align:top}
 #article .infobox,#article .wikitable{border:1px solid var(--line);background:#fff}
 #article .infobox{width:100%!important;float:none!important;margin:10px 0!important}
-#article .thumb,#article figure,#article .tright,#article .tleft{float:none!important;margin:12px auto!important;width:auto!important;max-width:100%}
-#article .thumbinner{width:auto!important;max-width:100%}
-#article figcaption,#article .thumbcaption{font-size:13px;color:var(--muted)}
+#article .thumb,#article figure,#article .tright,#article .tleft{float:none!important;clear:both;margin:10px auto!important;width:auto!important;max-width:100%}
+#article figure{display:table;text-align:center}
+#article figure>figcaption{display:table-caption;caption-side:bottom;text-align:left;padding-top:4px}
+#article .thumbinner{margin:0 auto;text-align:center}
+#article .thumbcaption{text-align:left}
+#article .infobox figure,#article .infobox img{margin-left:auto!important;margin-right:auto!important}
+#article .thumbinner{width:auto!important;max-width:100%;display:table}
+#article figcaption,#article .thumbcaption{font-size:13px;line-height:1.35;color:var(--muted)}
 #article .mw-editsection,#article .navbox,#article .navbox-styles,#article .noprint,#article .mw-empty-elt,#article .metadata,#article .sistersitebox,#article .ext-phonos-attribution{display:none!important}
 #article sup.reference{font-size:11px}
 #article .hatnote,#article .dablink{font-size:14px;color:var(--muted);font-style:italic}
