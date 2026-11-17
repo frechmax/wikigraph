@@ -127,6 +127,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 #lb img{max-width:100%;max-height:72vh;object-fit:contain;background:#fff;border-radius:4px}
 #lbcap{color:#eee;font-size:14px;text-align:center;max-width:560px;max-height:18vh;overflow-y:auto}
 #lbfile{color:#9cc3ea;font-size:13px;text-decoration:none}
+#article button.phonos{border:0;background:none;padding:0 2px;font-size:15px;vertical-align:baseline;cursor:pointer}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -379,7 +380,13 @@ async function openArticle(lang, title, from) {
   const ns0 = new Set((p.links || []).filter(l => l.ns === 0 && l.exists !== false).map(l => l.title));
   const doc = new DOMParser().parseFromString(`<div>${p.text}</div>`, 'text/html');
   const root = doc.body.firstElementChild;
-  root.querySelectorAll('link,.mw-editsection,.navbox,.navbox-styles,.sistersitebox,.noprint,#normdaten,.navigation-not-searchable').forEach(e => e.remove());
+  root.querySelectorAll('link,.mw-editsection,.navbox,.navbox-styles,.sistersitebox,.noprint,#normdaten').forEach(e => e.remove());
+  root.querySelectorAll('.ext-phonos-PhonosButton').forEach(b => {
+    let src = null; try { src = JSON.parse(b.dataset.ooui || '{}').href; } catch (e) {}
+    if (!src) { b.remove(); return; }
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'phonos'; btn.textContent = '🔊'; btn.dataset.audio = src.startsWith('//') ? 'https:' + src : src;
+    b.replaceWith(btn);
+  });
   // images
   root.querySelectorAll('img').forEach(img => {
     const s = img.getAttribute('src'); if (s && s.startsWith('//')) img.setAttribute('src', 'https:' + s);
@@ -499,7 +506,11 @@ function showImage(a) {
   const ss = (img.getAttribute('srcset') || '').split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
   const fig = a.closest('figure, .thumb, .gallerybox');
   const cap = fig && fig.querySelector('figcaption, .thumbcaption, .gallerytext');
-  $('lbimg').src = ss.length ? ss[ss.length - 1] : img.src;
+  const base = ss.length ? ss[ss.length - 1] : img.src;
+  const big = /\/thumb\//.test(base) ? base.replace(/\/(\d+)px-/, '/1280px-') : base;
+  const li = $('lbimg');
+  li.onerror = () => { li.onerror = null; li.src = base; };
+  li.src = big;
   $('lbcap').textContent = cap ? cap.textContent.trim() : (img.alt || '');
   $('lbfile').href = a.href;
   $('lb').classList.add('on');
@@ -513,7 +524,10 @@ $('pop').onclick = e => {
 };
 window.addEventListener('hashchange', () => { $('pop').classList.remove('on'); $('lb').classList.remove('on'); });
 $('article').addEventListener('click', e => {
-  const a = e.target.closest('a'); if (!a) return;
+  const a = e.target.closest('a');
+  const ph = e.target.closest('button.phonos');
+  if (ph) { try { (window._au = window._au || new Audio()).src = ph.dataset.audio; window._au.play().catch(() => toast('Audio nicht abspielbar')); } catch (err) {} return; }
+  if (!a) return;
   if (a.classList.contains('mw-file-description') && a.querySelector('img')) { e.preventDefault(); showImage(a); }
   else if (a.dataset.wt) { e.preventDefault(); openTitle(current.lang, a.dataset.wt, current); }
   else if (a.dataset.anchor && a.closest('sup.reference') && showRef(a.dataset.anchor)) { e.preventDefault(); }
