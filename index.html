@@ -301,6 +301,7 @@ let navIntent = false;      // true = user opened an article (link/search); fals
 function openTitle(lang, title, from) { pendingFrom = from || null; navIntent = true; go(artHash(lang, title)); }
 function show(v) {
   const was = view;
+  if (was === 'read' && v !== 'read') readY = $('v-read').scrollTop;
   view = v;
   document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + v));
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
@@ -414,13 +415,14 @@ let readY = 0;                                  // last scroll position in the r
 const pageCache = new Map();                    // key -> rendered article, for instant back
 const P_KEY = 'wikigraph.pos';
 let posStore = {}; try { posStore = JSON.parse(localStorage.getItem(P_KEY) || '{}'); } catch (e) {}
+function curY() { return view === 'read' ? $('v-read').scrollTop : readY; }
 function openSecs() { return [...$('article').querySelectorAll('details.sec')].map((d, i) => d.open ? i : -1).filter(i => i >= 0); }
 let posT;
 function savePos() {
   if (!current || !$('article').querySelector('.mw-parser-output')) return;
   const k = K(current.lang, current.title);
   delete posStore[k];
-  posStore[k] = { y: readY, open: openSecs() };
+  posStore[k] = { y: curY(), open: openSecs() };
   const ks = Object.keys(posStore); if (ks.length > 80) delete posStore[ks[0]];
   try { localStorage.setItem(P_KEY, JSON.stringify(posStore)); } catch (e) {}
 }
@@ -433,7 +435,7 @@ function stash() {
   savePos();
   const k = K(current.lang, current.title);
   pageCache.delete(k);
-  pageCache.set(k, { t: current.title, lang: current.lang, art: [...$('article').childNodes], meta: [...$('rmeta').childNodes], y: readY });
+  pageCache.set(k, { t: current.title, lang: current.lang, art: [...$('article').childNodes], meta: [...$('rmeta').childNodes], y: curY() });
   while (pageCache.size > 20) pageCache.delete(pageCache.keys().next().value);
 }
 function applyPos(pos) {
