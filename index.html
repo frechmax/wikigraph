@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f6f2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WikiGraph">
+<title>WikiGraph</title>
+<style>
+:root{
+  --bg:#f7f6f2; --card:#ffffff; --ink:#1d1d1b; --muted:#6f6c64; --line:#e3e0d8;
+  --accent:#2f5d8a; --accent2:#6a4c93; --ghost:#c0873f; --sem:#b5afa2;
+  --top:env(safe-area-inset-top,0px); --bot:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}
+.view{position:fixed;inset:0;bottom:calc(58px + var(--bot));overflow-y:auto;display:none;-webkit-overflow-scrolling:touch}
+.view.on{display:block}
+.bar{position:sticky;top:0;z-index:5;background:rgba(247,246,242,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  padding:calc(10px + var(--top)) 14px 10px;border-bottom:1px solid var(--line)}
+.bar h1{font-size:20px;margin:0;letter-spacing:-.01em}
+.wrap{padding:14px}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;height:calc(58px + var(--bot));padding-bottom:var(--bot);
+  display:flex;background:#fff;border-top:1px solid var(--line);z-index:20}
+nav.tabs button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  font-size:11px;color:var(--muted)}
+nav.tabs button svg{width:23px;height:23px}
+nav.tabs button.on{color:var(--accent)}
+/* search */
+.searchrow{display:flex;gap:8px;margin-top:10px}
+.searchrow input{flex:1;min-width:0;padding:11px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:17px;outline:none}
+.searchrow input:focus{border-color:var(--accent)}
+.searchrow select{border:1px solid var(--line);border-radius:12px;background:#fff;padding:0 8px}
+.list{list-style:none;margin:0;padding:0}
+.item{display:flex;gap:12px;align-items:center;padding:11px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.item:active{background:#efede7}
+.item .th{width:44px;height:44px;border-radius:8px;background:#e9e6de center/cover no-repeat;flex:none}
+.item .tx{min-width:0;flex:1}
+.item .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .d{font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.badge{font-size:11px;padding:2px 7px;border-radius:99px;background:#e6eef6;color:var(--accent);flex:none}
+.badge.g{background:#f6ecdf;color:#9a6524}
+h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 4px}
+.empty{color:var(--muted);text-align:center;padding:40px 20px}
+/* reader */
+.rbar{display:flex;align-items:center;gap:10px}
+.rbar .ttl{flex:1;min-width:0;font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icobtn{border:0;background:none;padding:6px;border-radius:8px;display:flex}
+.icobtn svg{width:22px;height:22px}
+.rmeta{font-size:13px;color:var(--muted);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.rmeta a{color:var(--accent)}
+#article{padding:4px 16px 40px;font-size:17px;line-height:1.62;overflow-wrap:break-word}
+#article h1.at{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:28px;line-height:1.2;margin:14px 0 10px}
+#article h2{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:23px;border-bottom:1px solid var(--line);padding-bottom:4px;margin:28px 0 10px}
+#article h3{font-size:18px;margin:20px 0 6px}
+#article a{color:var(--accent);text-decoration:none}
+#article a.seen{color:var(--accent2);background:#f1ecf7;border-radius:3px}
+#article a.new{color:#b0413e}
+#article img{max-width:100%;height:auto}
+#article table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse;font-size:14px}
+#article td,#article th{padding:4px 6px;vertical-align:top}
+#article .infobox,#article .wikitable{border:1px solid var(--line);background:#fff}
+#article .infobox{width:100%!important;float:none!important;margin:10px 0!important}
+#article .thumb,#article figure,#article .tright,#article .tleft{float:none!important;margin:12px auto!important;width:auto!important;max-width:100%}
+#article .thumbinner{width:auto!important;max-width:100%}
+#article figcaption,#article .thumbcaption{font-size:13px;color:var(--muted)}
+#article .mw-editsection,#article .navbox,#article .navbox-styles,#article .noprint,#article .mw-empty-elt,#article .metadata,#article .sistersitebox,#article .navigation-not-searchable{display:none!important}
+#article sup.reference{font-size:11px}
+#article .hatnote,#article .dablink{font-size:14px;color:var(--muted);font-style:italic}
+#article ol.references,#article .reflist{font-size:13px}
+.loading{padding:40px;text-align:center;color:var(--muted)}
+/* graph */
+#v-graph{overflow:hidden}
+#cv{position:absolute;left:0;right:0;bottom:0;width:100%;touch-action:none;display:block}
+.gtools{display:flex;gap:6px;margin-top:8px;overflow-x:auto;padding-bottom:2px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 11px;font-size:13px;white-space:nowrap}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.time{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12px;color:var(--muted)}
+.time input{flex:1;accent-color:var(--accent)}
+.time span{min-width:78px;text-align:right}
+.sheet{position:absolute;left:8px;right:8px;bottom:8px;background:#fff;border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 8px 30px rgba(0,0,0,.12);padding:14px 14px 12px;display:none;max-height:55%;overflow-y:auto}
+.sheet.on{display:block}
+.sheet .st{font-weight:700;font-size:18px;line-height:1.25}
+.sheet .sm{font-size:13px;color:var(--muted);margin:3px 0 10px}
+.sheet .nb{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.sheet .nb .chip{font-size:12px}
+.btn{border:0;border-radius:12px;padding:10px 16px;background:var(--accent);color:#fff;font-weight:600}
+.btn.sec{background:#ece9e1;color:var(--ink)}
+.btn.warn{background:#b0413e}
+.legend{position:absolute;right:10px;top:8px;font-size:11px;color:var(--muted);background:rgba(255,255,255,.85);border-radius:10px;padding:6px 9px;line-height:1.7;pointer-events:none}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
+.gempty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--muted);pointer-events:none}
+/* more */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;text-align:center}
+.stat b{display:block;font-size:22px}
+.stat span{font-size:12px;color:var(--muted)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.note{font-size:13px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.day{font-size:13px;font-weight:600;margin:16px 0 2px;color:var(--muted)}
+.hrow{display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.hrow .tm{font-size:12px;color:var(--muted);flex:none}
+#toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- SEARCH -->
+<section class="view" id="v-search">
+  <div class="bar">
+    <h1>WikiGraph</h1>
+    <form class="searchrow" id="sform">
+      <input id="q" type="search" placeholder="Wikipedia durchsuchen" autocomplete="off" enterkeyhint="search">
+      <select id="lang" aria-label="Sprache">
+        <option value="de">DE</option><option value="en">EN</option><option value="fr">FR</option><option value="es">ES</option>
+      </select>
+    </form>
+  </div>
+  <div class="wrap">
+    <ul class="list" id="results"></ul>
+    <div id="home"></div>
+  </div>
+</section>
+
+<!-- READ -->
+<section class="view" id="v-read">
+  <div class="bar">
+    <div class="rbar">
+      <button class="icobtn" id="back" aria-label="Zurück"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="ttl" id="rtitle">Lesen</div>
+      <button class="icobtn" id="toGraph" aria-label="Im Graph zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.3 7l9.3.6M6.3 8.2l4.6 7.6M17.7 9.2l-4.6 6.6"/></svg></button>
+    </div>
+    <div class="rmeta" id="rmeta"></div>
+  </div>
+  <div id="article"><div class="empty">Noch kein Artikel geöffnet. Such dir was aus.</div></div>
+</section>
+
+<!-- GRAPH -->
+<section class="view" id="v-graph">
+  <div class="bar" id="gbar">
+    <h1>Dein Graph</h1>
+    <div class="gtools">
+      <button class="chip on" id="tGhost">Vorschläge</button>
+      <button class="chip on" id="tSem">Querverbindungen</button>
+      <button class="chip on" id="tLbl">Labels</button>
+      <button class="chip" id="tFit">Zentrieren</button>
+    </div>
+    <div class="time"><input type="range" id="tl" min="0" max="1000" value="1000"><span id="tlv">Alles</span></div>
+  </div>
+  <canvas id="cv"></canvas>
+  <div class="legend"><div><i style="border-color:var(--accent)"></i>geklickt</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag</div></div>
+  <div class="gempty" id="gempty" style="display:none">Lies ein paar Artikel, dann wächst hier dein Graph.</div>
+  <div class="sheet" id="sheet"></div>
+</section>
+
+<!-- MORE -->
+<section class="view" id="v-more">
+  <div class="bar"><h1>Verlauf &amp; Daten</h1></div>
+  <div class="wrap">
+    <div class="stats" id="stats"></div>
+    <h2 class="sec">Daten</h2>
+    <p class="note">Dein Graph liegt nur in diesem Browser auf diesem Gerät. Exportier ihn ab und zu als JSON, um ein Backup zu haben oder ihn auf ein anderes Gerät mitzunehmen.</p>
+    <div class="btns">
+      <button class="btn sec" id="exJson">JSON exportieren</button>
+      <button class="btn sec" id="imJson">JSON importieren</button>
+      <button class="btn sec" id="exTtl">Als RDF (Turtle)</button>
+      <button class="btn sec" id="cpTtl">Turtle kopieren</button>
+      <button class="btn warn" id="reset">Alles löschen</button>
+    </div>
+    <input type="file" id="file" accept="application/json,.json" hidden>
+    <h2 class="sec">Verlauf</h2>
+    <div id="hist"></div>
+  </div>
+</section>
+
+<nav class="tabs">
+  <button data-v="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Suche</button>
+  <button data-v="read"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h6a2 2 0 012 2v12a2 2 0 00-2-2H4zM20 5h-6a2 2 0 00-2 2v12a2 2 0 012-2h6z"/></svg>Lesen</button>
+  <button data-v="graph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.3 7l9.3.6M6.3 8.2l4.6 7.6M17.7 9.2l-4.6 6.6"/></svg>Graph</button>
+  <button data-v="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Verlauf</button>
+</nav>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- storage ---------- */
+const S_KEY = 'wikigraph.v1';
+const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {} });
+function load() {
+  try { const r = localStorage.getItem(S_KEY); if (r) return Object.assign(blank(), JSON.parse(r)); } catch (e) {}
+  return blank();
+}
+let db = load();
+let saveT;
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    try { localStorage.setItem(S_KEY, JSON.stringify(db)); }
+    catch (e) { toast('Speichern fehlgeschlagen – bitte JSON exportieren'); }
+  }, 250);
+}
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+
+const K = (lang, title) => lang + ':' + title;
+const resolve = k => { const [l, ...r] = k.split(':'); const a = db.alias[k]; return a ? K(l, a) : k; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const $ = id => document.getElementById(id);
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2200); }
+const fmtDate = ts => new Date(ts).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const fmtTime = ts => new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+/* ---------- api ---------- */
+function api(lang, params) {
+  const u = new URL(`https://${lang}.wikipedia.org/w/api.php`);
+  const p = Object.assign({ format: 'json', formatversion: 2, origin: '*' }, params);
+  for (const k in p) u.searchParams.set(k, p[k]);
+  return fetch(u).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+}
+
+/* ---------- routing ---------- */
+let current = null;        // {lang,title}
+let pendingFrom = null;    // set when a link inside an article is tapped
+let view = 'search';
+function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
+function artHash(lang, title) { return '#a/' + lang + '/' + encodeURIComponent(title); }
+function openTitle(lang, title, from) { pendingFrom = from || null; go(artHash(lang, title)); }
+function show(v) {
+  view = v;
+  document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + v));
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (v === 'graph') graphEnter();
+  if (v === 'more') renderMore();
+  if (v === 'search') renderHome();
+}
+function route() {
+  const h = location.hash.slice(1);
+  if (h.startsWith('a/')) {
+    const [, lang, ...rest] = h.split('/');
+    const title = decodeURIComponent(rest.join('/'));
+    const from = pendingFrom; pendingFrom = null;
+    show('read');
+    if (!current || current.lang !== lang || current.title !== title) openArticle(lang, title, from);
+  } else if (['graph', 'more', 'search', 'read'].includes(h)) show(h);
+  else show('search');
+}
+window.addEventListener('hashchange', route);
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => {
+  const v = b.dataset.v;
+  if (v === 'read' && current) go(artHash(current.lang, current.title)); else go('#' + v);
+});
+
+/* ---------- search ---------- */
+const qEl = $('q'), langEl = $('lang');
+langEl.value = db.lang;
+langEl.onchange = () => { db.lang = langEl.value; save(); if (qEl.value.trim()) doSuggest(); };
+let sTok = 0, sT;
+qEl.addEventListener('input', () => { clearTimeout(sT); sT = setTimeout(doSuggest, 220); });
+$('sform').onsubmit = e => { e.preventDefault(); qEl.blur(); doFull(); };
+function resultItem(r, lang) {
+  const k = resolve(K(lang, r.title)); const n = db.nodes[k];
+  const li = document.createElement('li'); li.className = 'item';
+  li.innerHTML = `<div class="th" ${r.thumb ? `style="background-image:url('${esc(r.thumb)}')"` : ''}></div>
+    <div class="tx"><div class="t">${esc(r.title)}</div><div class="d">${esc(r.desc || '')}</div></div>
+    ${n ? `<span class="badge">${n.visits.length}× gelesen</span>` : (r.badge ? `<span class="badge g">${esc(r.badge)}</span>` : '')}`;
+  li.onclick = () => openTitle(lang, r.title, null);
+  return li;
+}
+function renderResults(list, lang) {
+  const ul = $('results'); ul.innerHTML = '';
+  if (!list.length) { ul.innerHTML = '<div class="empty">Nichts gefunden.</div>'; return; }
+  list.forEach(r => ul.appendChild(resultItem(r, lang)));
+}
+async function doSuggest() {
+  const q = qEl.value.trim(), lang = db.lang, tok = ++sTok;
+  $('home').style.display = q ? 'none' : '';
+  if (!q) { $('results').innerHTML = ''; renderHome(); return; }
+  try {
+    const d = await api(lang, { action: 'query', generator: 'prefixsearch', gpssearch: q, gpslimit: 12, prop: 'description|pageimages', piprop: 'thumbnail', pithumbsize: 96, pilimit: 12, redirects: 1 });
+    if (tok !== sTok) return;
+    const pages = ((d.query && d.query.pages) || []).sort((a, b) => (a.index ?? 99) - (b.index ?? 99));
+    renderResults(pages.map(p => ({ title: p.title, desc: p.description, thumb: p.thumbnail && p.thumbnail.source })), lang);
+  } catch (e) { if (tok === sTok) $('results').innerHTML = '<div class="empty">Keine Verbindung zu Wikipedia.</div>'; }
+}
+async function doFull() {
+  const q = qEl.value.trim(), lang = db.lang, tok = ++sTok;
+  if (!q) return;
+  $('home').style.display = 'none';
+  $('results').innerHTML = '<div class="loading">Suche …</div>';
+  try {
+    const d = await api(lang, { action: 'query', list: 'search', srsearch: q, srlimit: 25, srprop: 'snippet' });
+    if (tok !== sTok) return;
+    const tmp = document.createElement('div');
+    renderResults(d.query.search.map(s => { tmp.innerHTML = s.snippet; return { title: s.title, desc: tmp.textContent }; }), lang);
+  } catch (e) { $('results').innerHTML = '<div class="empty">Keine Verbindung zu Wikipedia.</div>'; }
+}
+function renderHome() {
+  const home = $('home');
+  if (qEl.value.trim()) return;
+  home.style.display = '';
+  home.innerHTML = '';
+  const nodes = Object.values(db.nodes);
+  if (!nodes.length) {
+    home.innerHTML = `<div class="empty">Alles, was du hier liest, landet automatisch in deinem Graphen.<br><br>Fang einfach mit einer Suche an.</div>`;
+    return;
+  }
+  const an = analyze(Infinity);
+  if (an.ghosts.length) {
+    home.insertAdjacentHTML('beforeend', '<h2 class="sec">Verbunden mit deinem Graphen</h2>');
+    const ul = document.createElement('ul'); ul.className = 'list';
+    an.ghosts.slice(0, 8).forEach(g => {
+      const froms = g.from.slice(0, 3).map(k => db.nodes[k].title).join(', ');
+      ul.appendChild(resultItem({ title: g.title, desc: 'verlinkt von ' + froms + (g.from.length > 3 ? ' …' : ''), badge: g.c + ' Verbindungen' }, g.lang));
+    });
+    home.appendChild(ul);
+  }
+  home.insertAdjacentHTML('beforeend', '<h2 class="sec">Zuletzt gelesen</h2>');
+  const ul2 = document.createElement('ul'); ul2.className = 'list';
+  nodes.sort((a, b) => b.last - a.last).slice(0, 10).forEach(n => ul2.appendChild(resultItem({ title: n.title, desc: n.desc || fmtDate(n.last) }, n.lang)));
+  home.appendChild(ul2);
+}
+
+/* ---------- reader ---------- */
+let rTok = 0;
+$('back').onclick = () => history.back();
+$('toGraph').onclick = () => { if (current) { G.focusKey = K(current.lang, current.title); } go('#graph'); };
+function hrefTitle(h) {
+  try { return decodeURIComponent(h.slice(6).split('#')[0]).replace(/_/g, ' '); } catch (e) { return null; }
+}
+async function openArticle(lang, title, from) {
+  const tok = ++rTok;
+  const art = $('article');
+  $('rtitle').textContent = title; $('rmeta').innerHTML = '';
+  art.innerHTML = '<div class="loading">Lädt …</div>';
+  $('v-read').scrollTop = 0;
+  let d;
+  try {
+    d = await api(lang, { action: 'parse', page: title, prop: 'text|links|properties|displaytitle', redirects: 1, disableeditsection: 1, disabletoc: 1 });
+  } catch (e) { if (tok === rTok) art.innerHTML = '<div class="empty">Konnte den Artikel nicht laden. Bist du online?</div>'; return; }
+  if (tok !== rTok) return;
+  if (d.error) { art.innerHTML = `<div class="empty">${esc(d.error.info || 'Artikel nicht gefunden.')}</div>`; return; }
+  const p = d.parse, t = p.title;
+  current = { lang, title: t };
+  // redirect bookkeeping
+  if (t !== title) db.alias[K(lang, title)] = t;
+  (p.redirects || []).forEach(r => { if (r.from && r.to) db.alias[K(lang, r.from)] = r.to; });
+  if (t !== title) history.replaceState(null, '', artHash(lang, t));
+
+  const props = Array.isArray(p.properties) ? Object.fromEntries(p.properties.map(x => [x.name, x['*'] || x.value])) : (p.properties || {});
+  const ns0 = new Set((p.links || []).filter(l => l.ns === 0 && l.exists !== false).map(l => l.title));
+  const doc = new DOMParser().parseFromString(`<div>${p.text}</div>`, 'text/html');
+  const root = doc.body.firstElementChild;
+  root.querySelectorAll('link,.mw-editsection,.navbox,.navbox-styles,.sistersitebox,.noprint,#normdaten,.navigation-not-searchable').forEach(e => e.remove());
+  // images
+  root.querySelectorAll('img').forEach(img => {
+    const s = img.getAttribute('src'); if (s && s.startsWith('//')) img.setAttribute('src', 'https:' + s);
+    const ss = img.getAttribute('srcset'); if (ss) img.setAttribute('srcset', ss.replace(/(^|,\s*)\/\//g, '$1https://'));
+    img.setAttribute('loading', 'lazy');
+  });
+  // links + outlinks
+  const out = [], seen = new Set();
+  root.querySelectorAll('a[href]').forEach(a => {
+    const h = a.getAttribute('href');
+    if (h.startsWith('/wiki/')) {
+      const lt = hrefTitle(h);
+      if (lt && ns0.has(lt)) {
+        a.dataset.wt = lt; a.setAttribute('href', '#');
+        if (db.nodes[resolve(K(lang, lt))]) a.classList.add('seen');
+        if (lt !== t && !seen.has(lt)) { seen.add(lt); out.push(lt); }
+      } else { a.setAttribute('href', `https://${lang}.wikipedia.org${h}`); a.target = '_blank'; a.rel = 'noopener'; }
+    } else if (h.startsWith('/')) { a.setAttribute('href', `https://${lang}.wikipedia.org${h}`); a.target = '_blank'; a.rel = 'noopener'; }
+    else if (!h.startsWith('#')) { a.target = '_blank'; a.rel = 'noopener'; }
+    else a.dataset.anchor = h.slice(1);
+  });
+  // record visit
+  const key = K(lang, t), now = Date.now();
+  let n = db.nodes[key];
+  if (!n) n = db.nodes[key] = { title: t, lang, visits: [], first: now };
+  const lastV = n.visits[n.visits.length - 1] || 0;
+  if (now - lastV > 5 * 60e3) n.visits.push(now);
+  n.last = now;
+  n.out = out.slice(0, 1200);
+  if (props.wikibase_item) n.qid = props.wikibase_item;
+  if (props['wikibase-shortdesc']) n.desc = props['wikibase-shortdesc'];
+  if (from) {
+    const fk = K(from.lang, from.title);
+    const le = db.edges[db.edges.length - 1];
+    if (fk !== key && db.nodes[fk] && !(le && le.f === fk && le.t === key && now - le.ts < 5 * 60e3)) db.edges.push({ f: fk, t: key, ts: now });
+  }
+  save();
+  G.dirty = true;
+
+  // render
+  $('rtitle').textContent = t;
+  const inbound = db.edges.filter(e => e.t === key).map(e => e.f);
+  $('rmeta').innerHTML = `<span>${n.visits.length}× gelesen</span>${n.qid ? `<span>${esc(n.qid)}</span>` : ''}<a href="https://${lang}.wikipedia.org/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}" target="_blank" rel="noopener">auf Wikipedia ↗</a>`;
+  art.innerHTML = '';
+  const h1 = document.createElement('h1'); h1.className = 'at'; h1.innerHTML = p.displaytitle || esc(t);
+  art.appendChild(h1);
+  art.appendChild(root);
+}
+$('article').addEventListener('click', e => {
+  const a = e.target.closest('a'); if (!a) return;
+  if (a.dataset.wt) { e.preventDefault(); openTitle(current.lang, a.dataset.wt, current); }
+  else if (a.dataset.anchor) {
+    e.preventDefault();
+    const el = $('article').querySelector('[id="' + CSS.escape(a.dataset.anchor) + '"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+
+/* ---------- graph analysis ---------- */
+function analyze(tMax) {
+  const vis = Object.keys(db.nodes).filter(k => db.nodes[k].first <= tMax);
+  const visSet = new Set(vis);
+  const pairs = new Map(), links = [];
+  const pk = (a, b) => a < b ? a + '|' + b : b + '|' + a;
+  for (const e of db.edges) {
+    if (e.ts > tMax || !visSet.has(e.f) || !visSet.has(e.t)) continue;
+    const id = pk(e.f, e.t);
+    const l = pairs.get(id);
+    if (l) { l.c++; if (l.type !== 'nav') l.type = 'nav'; }
+    else { const nl = { s: e.f, t: e.t, type: 'nav', c: 1 }; pairs.set(id, nl); links.push(nl); }
+  }
+  const gc = new Map();
+  for (const a of vis) {
+    const n = db.nodes[a];
+    for (const o of (n.out || [])) {
+      const k = resolve(K(n.lang, o));
+      if (k === a) continue;
+      if (visSet.has(k)) {
+        const id = pk(a, k);
+        if (!pairs.has(id)) { const nl = { s: a, t: k, type: 'sem', c: 1 }; pairs.set(id, nl); links.push(nl); }
+      } else {
+        let g = gc.get(k);
+        if (!g) { g = { key: k, title: k.slice(k.indexOf(':') + 1), lang: n.lang, c: 0, from: [] }; gc.set(k, g); }
+        if (!g.from.includes(a)) { g.c++; g.from.push(a); }
+      }
+    }
+  }
+  const ghosts = [...gc.values()].filter(g => g.c >= 2).sort((x, y) => y.c - x.c || x.title.localeCompare(y.title));
+  return { vis, links, ghosts };
+}
+
+/* ---------- graph view ---------- */
+const cv = $('cv'), ctx = cv.getContext('2d');
+const G = { nodes: [], links: [], by: new Map(), cam: { x: 0, y: 0, k: 1 }, sel: null, alpha: 0, ghost: true, sem: true, lbl: true, tMax: Infinity, dirty: true, focusKey: null, W: 0, H: 0, dpr: 1, raf: 0, fitted: false };
+function sizeCanvas() {
+  const top = $('gbar').offsetHeight;
+  const W = cv.parentElement.clientWidth, H = cv.parentElement.clientHeight - top;
+  G.dpr = window.devicePixelRatio || 1; G.W = W; G.H = H;
+  cv.style.top = top + 'px'; cv.style.height = H + 'px';
+  cv.width = Math.round(W * G.dpr); cv.height = Math.round(H * G.dpr);
+}
+function rebuild() {
+  const an = analyze(G.tMax);
+  const old = G.by, by = new Map(), nodes = [];
+  const place = (key, near) => {
+    const o = old.get(key); if (o) return { x: o.x, y: o.y };
+    const p = db.pos[key]; if (p) return { x: p[0], y: p[1] };
+    const nb = near && (by.get(near) || old.get(near));
+    const a = Math.random() * 6.283, r = 30 + Math.random() * 40;
+    return nb ? { x: nb.x + Math.cos(a) * r, y: nb.y + Math.sin(a) * r } : { x: (Math.random() - .5) * 300, y: (Math.random() - .5) * 300 };
+  };
+  // neighbour hint for placement
+  const nbr = new Map();
+  for (const l of an.links) { if (!nbr.has(l.s)) nbr.set(l.s, l.t); if (!nbr.has(l.t)) nbr.set(l.t, l.s); }
+  const visSorted = an.vis.slice().sort((a, b) => db.nodes[a].first - db.nodes[b].first);
+  for (const k of visSorted) {
+    const n = db.nodes[k];
+    const p = place(k, nbr.get(k));
+    const o = { key: k, title: n.title, lang: n.lang, ghost: false, w: n.visits.filter(t => t <= G.tMax).length || 1, x: p.x, y: p.y, vx: 0, vy: 0 };
+    o.r = 6 + Math.sqrt(o.w) * 3.2;
+    nodes.push(o); by.set(k, o);
+  }
+  const links = an.links.filter(l => G.sem || l.type === 'nav').map(l => ({ ...l, a: by.get(l.s), b: by.get(l.t) }));
+  if (G.ghost) {
+    const max = Math.max(6, Math.min(25, Math.round(an.vis.length / 3)));
+    for (const g of an.ghosts.slice(0, max)) {
+      const p = place(g.key, g.from[0]);
+      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, from: g.from, x: p.x, y: p.y, vx: 0, vy: 0, r: 5 };
+      nodes.push(o); by.set(g.key, o);
+      for (const f of g.from) links.push({ s: f, t: g.key, type: 'ghost', a: by.get(f), b: o });
+    }
+  }
+  G.nodes = nodes; G.links = links; G.by = by;
+  // adjacency
+  nodes.forEach(n => n.adj = new Set());
+  links.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
+  if (G.sel && !by.has(G.sel.key)) closeSheet(); else if (G.sel) G.sel = by.get(G.sel.key);
+  $('gempty').style.display = nodes.length ? 'none' : 'flex';
+  G.dirty = false;
+}
+function heat(a) { G.alpha = Math.max(G.alpha, a); loop(); }
+function tick() {
+  const N = G.nodes, a = G.alpha;
+  for (let i = 0; i < N.length; i++) {
+    const p = N[i];
+    for (let j = i + 1; j < N.length; j++) {
+      const q = N[j];
+      let dx = q.x - p.x, dy = q.y - p.y, d2 = dx * dx + dy * dy;
+      if (d2 > 160000) continue;
+      if (d2 < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
+      const d = Math.sqrt(d2), f = 2200 * a / d2;
+      dx /= d; dy /= d;
+      p.vx -= dx * f; p.vy -= dy * f; q.vx += dx * f; q.vy += dy * f;
+    }
+  }
+  for (const l of G.links) {
+    const p = l.a, q = l.b;
+    const L = l.type === 'nav' ? 70 : l.type === 'sem' ? 120 : 90;
+    const s = l.type === 'nav' ? .08 : l.type === 'sem' ? .025 : .03;
+    let dx = q.x - p.x, dy = q.y - p.y; const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = (d - L) / d * s * a;
+    dx *= f; dy *= f;
+    p.vx += dx; p.vy += dy; q.vx -= dx; q.vy -= dy;
+  }
+  for (const p of N) {
+    p.vx -= p.x * .004 * a; p.vy -= p.y * .004 * a;
+    p.vx *= .6; p.vy *= .6;
+    p.x += p.vx; p.y += p.vy;
+  }
+  G.alpha *= .985;
+}
+function loop() {
+  if (G.raf) return;
+  const step = () => {
+    G.raf = 0;
+    if (view !== 'graph') return;
+    if (G.alpha > .004) { tick(); tick(); }
+    draw();
+    if (G.alpha > .004) G.raf = requestAnimationFrame(step);
+    else persistPos();
+  };
+  G.raf = requestAnimationFrame(step);
+}
+function requestDraw() { if (!G.raf) G.raf = requestAnimationFrame(() => { G.raf = 0; draw(); if (G.alpha > .004) loop(); }); }
+function persistPos() {
+  for (const n of G.nodes) db.pos[n.key] = [Math.round(n.x), Math.round(n.y)];
+  save();
+}
+const toScreen = (x, y) => [G.W / 2 + G.cam.x + x * G.cam.k, G.H / 2 + G.cam.y + y * G.cam.k];
+const toWorld = (sx, sy) => [(sx - G.W / 2 - G.cam.x) / G.cam.k, (sy - G.H / 2 - G.cam.y) / G.cam.k];
+function draw() {
+  const { W, H, dpr, cam } = G;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.translate(W / 2 + cam.x, H / 2 + cam.y);
+  ctx.scale(cam.k, cam.k);
+  const sel = G.sel, k = cam.k;
+  const lit = n => !sel || n === sel || sel.adj.has(n);
+  // links
+  for (const l of G.links) {
+    const on = !sel || l.a === sel || l.b === sel;
+    ctx.globalAlpha = on ? 1 : .12;
+    ctx.beginPath(); ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.b.x, l.b.y);
+    if (l.type === 'nav') { ctx.strokeStyle = '#2f5d8a'; ctx.lineWidth = Math.min(4, 1.2 + l.c * .5) / Math.sqrt(k); ctx.setLineDash([]); }
+    else if (l.type === 'sem') { ctx.strokeStyle = '#b5afa2'; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([5 / k, 4 / k]); }
+    else { ctx.strokeStyle = '#d9b37f'; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([1.5 / k, 3 / k]); }
+    ctx.stroke();
+    if (l.type === 'nav') { // arrow head
+      const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || 1;
+      const ux = dx / d, uy = dy / d, ex = l.b.x - ux * (l.b.r + 2), ey = l.b.y - uy * (l.b.r + 2), s = 6 / Math.sqrt(k);
+      ctx.setLineDash([]); ctx.fillStyle = '#2f5d8a';
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - ux * s - uy * s * .6, ey - uy * s + ux * s * .6); ctx.lineTo(ex - ux * s + uy * s * .6, ey - uy * s - ux * s * .6); ctx.fill();
+    }
+  }
+  ctx.setLineDash([]);
+  // nodes
+  for (const n of G.nodes) {
+    ctx.globalAlpha = lit(n) ? 1 : .18;
+    ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 6.2832);
+    if (n.ghost) { ctx.fillStyle = '#f7f6f2'; ctx.fill(); ctx.strokeStyle = '#c0873f'; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]); }
+    else { ctx.fillStyle = n.lang === 'de' ? '#2f5d8a' : '#6a4c93'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
+    if (n === sel) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 4 / k, 0, 6.2832); ctx.strokeStyle = '#1d1d1b'; ctx.lineWidth = 2 / k; ctx.stroke(); }
+  }
+  // labels
+  if (G.lbl) {
+    const fs = 12 / k;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const n of G.nodes) {
+      const show = (sel && lit(n)) || (!sel && (k > .75 || n.w >= 3 || (n.ghost && k > 1.1)));
+      if (!show) continue;
+      ctx.globalAlpha = 1;
+      ctx.font = (n.ghost ? 'italic ' : (n === sel ? '600 ' : '')) + fs + 'px -apple-system,Segoe UI,Roboto,sans-serif';
+      const t = n.title.length > 28 ? n.title.slice(0, 26) + '…' : n.title;
+      ctx.lineWidth = 3 / k; ctx.strokeStyle = 'rgba(247,246,242,.9)'; ctx.strokeText(t, n.x, n.y + n.r + 3 / k);
+      ctx.fillStyle = n.ghost ? '#9a6524' : '#1d1d1b'; ctx.fillText(t, n.x, n.y + n.r + 3 / k);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+function fit(anim) {
+  if (!G.nodes.length) return;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const n of G.nodes) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
+  const w = Math.max(80, x1 - x0), h = Math.max(80, y1 - y0);
+  const k = Math.min(2.2, Math.max(.15, Math.min(G.W / (w + 80), G.H / (h + 120))));
+  G.cam.k = k; G.cam.x = -(x0 + x1) / 2 * k; G.cam.y = -(y0 + y1) / 2 * k;
+  requestDraw();
+}
+function centerOn(n) { G.cam.x = -n.x * G.cam.k; G.cam.y = -n.y * G.cam.k + G.H * .15; requestDraw(); }
+function graphEnter() {
+  sizeCanvas();
+  setupTimeline();
+  if (G.dirty) { rebuild(); heat(.6); }
+  if (!G.fitted) {
+    // pre-settle when there are no stored positions yet
+    for (let i = 0; i < 120 && G.alpha > .02; i++) tick();
+    fit(); G.fitted = true;
+  }
+  if (G.focusKey && G.by.has(G.focusKey)) { const n = G.by.get(G.focusKey); select(n); centerOn(n); }
+  G.focusKey = null;
+  loop(); requestDraw();
+}
+window.addEventListener('resize', () => { if (view === 'graph') { sizeCanvas(); requestDraw(); } });
+
+/* timeline */
+function setupTimeline() {
+  const ts = Object.values(db.nodes).map(n => n.first);
+  const tl = $('tl');
+  if (!ts.length) { tl.disabled = true; return; }
+  tl.disabled = false;
+  G.t0 = Math.min(...ts); G.t1 = Date.now();
+}
+$('tl').addEventListener('input', e => {
+  const v = +e.target.value;
+  if (v >= 1000) { G.tMax = Infinity; $('tlv').textContent = 'Alles'; }
+  else { G.tMax = G.t0 + (G.t1 - G.t0) * v / 1000; $('tlv').textContent = fmtDate(G.tMax); }
+  rebuild(); heat(.25); requestDraw();
+});
+
+/* toggles */
+function tog(id, prop) { $(id).onclick = () => { G[prop] = !G[prop]; $(id).classList.toggle('on', G[prop]); if (prop !== 'lbl') { rebuild(); heat(.3); } requestDraw(); }; }
+tog('tGhost', 'ghost'); tog('tSem', 'sem'); tog('tLbl', 'lbl');
+$('tFit').onclick = () => fit();
+
+/* pointer: pan, pinch, tap */
+const ptrs = new Map(); let gest = null;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+function startPan(p) { gest = { type: 'pan', sx: p.x, sy: p.y, cx: G.cam.x, cy: G.cam.y, moved: false }; }
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (ptrs.size === 1) startPan(ptrs.get(e.pointerId));
+  else if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], m = mid(a, b);
+    gest = { type: 'pinch', d0: dist(a, b) || 1, k0: G.cam.k, w0: toWorld(m.x, m.y) };
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (!gest) return;
+  if (gest.type === 'pan' && ptrs.size === 1) {
+    const p = ptrs.get(e.pointerId), dx = p.x - gest.sx, dy = p.y - gest.sy;
+    if (Math.hypot(dx, dy) > 6) gest.moved = true;
+    if (gest.moved) { G.cam.x = gest.cx + dx; G.cam.y = gest.cy + dy; requestDraw(); }
+  } else if (gest.type === 'pinch' && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()], m = mid(a, b);
+    const k = Math.min(5, Math.max(.08, gest.k0 * dist(a, b) / gest.d0));
+    G.cam.k = k;
+    G.cam.x = m.x - G.W / 2 - gest.w0[0] * k; G.cam.y = m.y - G.H / 2 - gest.w0[1] * k;
+    requestDraw();
+  }
+});
+function endPtr(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  const p = ptrs.get(e.pointerId);
+  ptrs.delete(e.pointerId);
+  if (gest && gest.type === 'pan' && !gest.moved && ptrs.size === 0 && e.type === 'pointerup') tap(p.x, p.y);
+  if (ptrs.size === 1) { startPan([...ptrs.values()][0]); gest.moved = true; }
+  else if (ptrs.size === 0) gest = null;
+}
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const w = toWorld(e.offsetX, e.offsetY);
+  const k = Math.min(5, Math.max(.08, G.cam.k * Math.exp(-e.deltaY * .0015)));
+  G.cam.k = k; G.cam.x = e.offsetX - G.W / 2 - w[0] * k; G.cam.y = e.offsetY - G.H / 2 - w[1] * k;
+  requestDraw();
+}, { passive: false });
+function tap(sx, sy) {
+  const [wx, wy] = toWorld(sx, sy);
+  let best = null, bd = Infinity;
+  for (const n of G.nodes) {
+    const d = Math.hypot(n.x - wx, n.y - wy) - n.r;
+    if (d < bd) { bd = d; best = n; }
+  }
+  if (best && bd * G.cam.k < 16) select(best); else closeSheet();
+}
+
+/* sheet */
+function select(n) {
+  G.sel = n; requestDraw();
+  const sh = $('sheet');
+  let html;
+  if (n.ghost) {
+    html = `<div class="st">${esc(n.title)}</div>
+      <div class="sm">Noch nicht gelesen · verlinkt von ${n.c} deiner Artikel</div>
+      <button class="btn" data-open>Lesen</button> <button class="btn sec" data-close>Schließen</button>`;
+  } else {
+    const d = db.nodes[n.key];
+    html = `<div class="st">${esc(n.title)}</div>
+      <div class="sm">${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)}${d.desc ? '<br>' + esc(d.desc) : ''}</div>
+      <button class="btn" data-open>Lesen</button> <button class="btn sec" data-close>Schließen</button>`;
+  }
+  const nb = [...n.adj].sort((a, b) => (a.ghost - b.ghost) || a.title.localeCompare(b.title));
+  if (nb.length) html += `<div class="nb">${nb.map(m => `<button class="chip" data-k="${esc(m.key)}" style="${m.ghost ? 'border-style:dashed;color:#9a6524' : ''}">${esc(m.title)}</button>`).join('')}</div>`;
+  sh.innerHTML = html; sh.classList.add('on');
+  sh.querySelector('[data-open]').onclick = () => openTitle(n.lang, n.title, null);
+  sh.querySelector('[data-close]').onclick = closeSheet;
+  sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
+}
+function closeSheet() { G.sel = null; $('sheet').classList.remove('on'); requestDraw(); }
+
+/* ---------- more: history, stats, export ---------- */
+function renderMore() {
+  const nodes = Object.values(db.nodes);
+  const views = nodes.reduce((s, n) => s + n.visits.length, 0);
+  const an = analyze(Infinity);
+  $('stats').innerHTML = `<div class="stat"><b>${nodes.length}</b><span>Artikel</span></div><div class="stat"><b>${views}</b><span>Aufrufe</span></div><div class="stat"><b>${an.links.length}</b><span>Verbindungen</span></div>`;
+  const ev = [];
+  for (const [k, n] of Object.entries(db.nodes)) for (const t of n.visits) ev.push({ k, n, t });
+  ev.sort((a, b) => b.t - a.t);
+  const h = $('hist'); h.innerHTML = '';
+  if (!ev.length) { h.innerHTML = '<div class="empty">Noch nichts gelesen.</div>'; return; }
+  let day = '';
+  for (const e of ev.slice(0, 400)) {
+    const d = new Date(e.t).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (d !== day) { day = d; h.insertAdjacentHTML('beforeend', `<div class="day">${esc(d)}</div>`); }
+    const row = document.createElement('div'); row.className = 'hrow';
+    row.innerHTML = `<span>${esc(e.n.title)}${e.n.lang !== 'de' ? ` <span class="badge">${e.n.lang}</span>` : ''}</span><span class="tm">${fmtTime(e.t)}</span>`;
+    row.onclick = () => openTitle(e.n.lang, e.n.title, null);
+    h.appendChild(row);
+  }
+}
+function download(name, text, type) {
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e) { toast('Download nicht möglich'); }
+}
+const stamp = () => new Date().toISOString().slice(0, 10);
+$('exJson').onclick = () => download(`wikigraph-${stamp()}.json`, JSON.stringify(db), 'application/json');
+$('imJson').onclick = () => $('file').click();
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!d.nodes) throw 0;
+    for (const [k, n] of Object.entries(d.nodes)) {
+      const m = db.nodes[k];
+      if (!m) db.nodes[k] = n;
+      else {
+        m.visits = [...new Set([...m.visits, ...n.visits])].sort((a, b) => a - b);
+        m.first = Math.min(m.first, n.first); m.last = Math.max(m.last || 0, n.last || 0);
+        m.out = m.out && m.out.length ? m.out : n.out; m.qid = m.qid || n.qid; m.desc = m.desc || n.desc;
+      }
+    }
+    const seen = new Set(db.edges.map(x => x.f + '|' + x.t + '|' + x.ts));
+    for (const x of d.edges || []) if (!seen.has(x.f + '|' + x.t + '|' + x.ts)) db.edges.push(x);
+    db.edges.sort((a, b) => a.ts - b.ts);
+    Object.assign(db.alias, d.alias || {});
+    for (const k in d.pos || {}) if (!db.pos[k]) db.pos[k] = d.pos[k];
+    save(); G.dirty = true; G.fitted = false; renderMore(); toast('Import erfolgreich');
+  } catch (err) { toast('Datei konnte nicht gelesen werden'); }
+  e.target.value = '';
+};
+function ttl() {
+  const iri = n => `<https://${n.lang}.wikipedia.org/wiki/${encodeURIComponent(n.title.replace(/ /g, '_'))}>`;
+  const lit = s => '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  const iso = t => `"${new Date(t).toISOString()}"^^xsd:dateTime`;
+  let s = `@prefix wg: <https://wikigraph.app/ns#> .\n@prefix wd: <http://www.wikidata.org/entity/> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n\n`;
+  for (const n of Object.values(db.nodes)) {
+    s += `${iri(n)} a wg:Article ;\n  rdfs:label ${lit(n.title)}@${n.lang} ;\n  wg:visitCount ${n.visits.length} ;\n  wg:firstVisited ${iso(n.first)} ;\n  wg:lastVisited ${iso(n.last || n.first)}`;
+    if (n.qid) s += ` ;\n  owl:sameAs wd:${n.qid}`;
+    s += ' .\n';
+  }
+  s += '\n';
+  const nav = new Map();
+  for (const e of db.edges) { const k = e.f + '\u0000' + e.t; nav.set(k, (nav.get(k) || 0) + 1); }
+  for (const k of nav.keys()) { const [f, t] = k.split('\u0000'); if (db.nodes[f] && db.nodes[t]) s += `${iri(db.nodes[f])} wg:navigatedTo ${iri(db.nodes[t])} .\n`; }
+  for (const [a, n] of Object.entries(db.nodes)) for (const o of n.out || []) {
+    const k = resolve(K(n.lang, o));
+    if (k !== a && db.nodes[k]) s += `${iri(n)} wg:linksTo ${iri(db.nodes[k])} .\n`;
+  }
+  return s;
+}
+$('exTtl').onclick = () => download(`wikigraph-${stamp()}.ttl`, ttl(), 'text/turtle');
+$('cpTtl').onclick = async () => { try { await navigator.clipboard.writeText(ttl()); toast('Turtle kopiert'); } catch (e) { toast('Kopieren nicht möglich'); } };
+$('reset').onclick = () => {
+  const b = $('reset');
+  if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = 'Wirklich alles löschen?'; setTimeout(() => { delete b.dataset.armed; b.textContent = 'Alles löschen'; }, 4000); return; }
+  db = blank(); save(); current = null; G.by = new Map(); G.dirty = true; G.fitted = false;
+  $('article').innerHTML = '<div class="empty">Noch kein Artikel geöffnet.</div>'; $('rtitle').textContent = 'Lesen'; $('rmeta').innerHTML = '';
+  delete b.dataset.armed; b.textContent = 'Alles löschen'; renderMore(); toast('Gelöscht');
+};
+
+route();
+</script>
+</body>
+</html>
