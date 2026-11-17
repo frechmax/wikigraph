@@ -553,7 +553,7 @@ function showRef(id) {
 function showImage(a) {
   const img = a.querySelector('img');
   const ss = (img.getAttribute('srcset') || '').split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
-  const fig = a.closest('figure, .thumb, .gallerybox');
+  const fig = a.closest('.gallerybox') || a.closest('figure, .thumb');
   const cap = fig && fig.querySelector('figcaption, .thumbcaption, .gallerytext');
   const base = ss.length ? ss[ss.length - 1] : img.src;
   const big = /\/thumb\//.test(base) ? base.replace(/\/(\d+)px-/, '/1280px-') : base;
