@@ -228,6 +228,8 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 #popbody .time .btn{padding:6px 12px}
 .legend2{font-size:13px;color:var(--muted);line-height:1.9}
 .legend2 i{display:inline-block;width:20px;height:0;border-top:2px solid;vertical-align:middle;margin-right:8px}
+.sheet .hint{font-size:11px;opacity:.8}
+.fnote{font-size:13px;color:var(--muted);line-height:1.5;margin:10px 0 4px}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -913,7 +915,7 @@ function analyze(tMax) {
     }
   }
   const ghosts = [...gc.values()].filter(g => g.c >= 2).sort((x, y) => y.c - x.c || x.title.localeCompare(y.title));
-  return { vis, links, ghosts };
+  return { vis, links, ghosts, gc };
 }
 
 /* ---------- graph view ---------- */
@@ -989,12 +991,12 @@ function rebuild() {
     const max = Math.max(6, Math.min(25, Math.round(an.vis.length / 3)));
     for (const g of an.ghosts.slice(0, max)) {
       const p = place(g.key, g.from[0]);
-      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 5 };
+      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
       nodes.push(o); by.set(g.key, o);
       for (const f of g.from) links.push({ s: f, t: g.key, type: 'ghost', a: by.get(f), b: o });
     }
   }
-  G.nodes = nodes; G.links = links; G.by = by;
+  G.nodes = nodes; G.links = links; G.by = by; G.gc = an.gc; G.ghostMax = G.ghost ? Math.max(6, Math.min(25, Math.round(an.vis.length / 3))) : 0;
   nodes.forEach(n => n.adj = new Set());
   links.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
   computeClusters(nodes, links);
@@ -1246,7 +1248,8 @@ $('gFilter').onclick = () => {
     <div class="flab">Zeitreise</div>
     <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
     <div class="flab">Legende</div>
-    <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
+    <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div></div>
+    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden die ${G.ghostMax || 0} mit den meisten solchen Links; je mehr, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
   $('pop').classList.add('on');
   pb.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
     const t = b.dataset.t;
@@ -1359,16 +1362,24 @@ function select(n) {
   let html;
   if (n.ghost) {
     html = `<div class="st">${esc(n.title)}</div>
-      <div class="sm">Noch nicht gelesen · verlinkt von ${n.c} deiner Artikel ${clTag}</div>
+      <div class="sm">Noch nicht gelesen. ${n.c} deiner gelesenen Artikel verlinken hierher: <b>${n.from.map(k => esc(db.nodes[k] ? db.nodes[k].title : k)).join(', ')}</b> ${clTag}</div>
       <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-prev>Vorschau</button><button class="btn sec" data-focus>Fokus</button><button class="btn sec" data-hide>Nicht vorschlagen</button></div>`;
   } else {
     const d = db.nodes[n.key];
     html = `<div class="st">${esc(n.title)}</div>
       <div class="sm">${d.desc ? esc(d.desc) + '<br>' : ''}${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)} ${clTag}</div>
       <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button></div>`;
+    const hidden = new Set(db.hidden || []);
+    const sug = (d.out || []).map((o, i) => ({ o, i, k: resolve(K(n.lang, o)) }))
+      .filter(x => !isIdent(x.o) && !db.nodes[x.k] && !hidden.has(x.k))
+      .map(x => ({ ...x, c: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).c : 1) }))
+      .sort((a, b) => b.c - a.c || a.i - b.i).slice(0, 8);
+    if (sug.length) html += `<div class="nbh">Vorschläge von hier aus <span class="hint">(ungelesen, verlinkt aus diesem Artikel; Zahl = wie viele deiner Artikel darauf verlinken)</span></div>
+      <div class="nb">${sug.map(x => `<button class="chip gh" data-pv="${esc(x.o)}">${esc(x.o)}${x.c > 1 ? ` <small>${x.c}</small>` : ''}</button>`).join('')}</div>`;
   }
   const nb = [...n.adj].sort((a, b) => (a.ghost - b.ghost) || b.w - a.w || a.title.localeCompare(b.title));
-  if (nb.length) html += `<div class="nbh">${nb.filter(m => !m.ghost).length} gelesene Nachbarn${nb.some(m => m.ghost) ? ', ' + nb.filter(m => m.ghost).length + ' Vorschläge' : ''}</div><div class="nb">${nb.map(m => `<button class="chip${m.ghost ? ' gh' : ''}" data-k="${esc(m.key)}">${esc(m.title)}</button>`).join('')}</div>`;
+  const rn = nb.filter(m => !m.ghost);
+  if (rn.length) html += `<div class="nbh">${n.ghost ? 'Verlinkt von' : 'Gelesene Nachbarn'}</div><div class="nb">${rn.map(m => `<button class="chip" data-k="${esc(m.key)}">${esc(m.title)}</button>`).join('')}</div>`;
   html += '<button class="shx" data-close aria-label="Schließen">✕</button>';
   sh.innerHTML = html; sh.classList.add('on'); sh.scrollTop = 0;
   sh.querySelector('[data-open]').onclick = () => openTitle(n.lang, n.title, null);
@@ -1381,6 +1392,7 @@ function select(n) {
   const hb = sh.querySelector('[data-hide]');
   if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
   sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
+  sh.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => showPreview(n.lang, b.dataset.pv));
 }
 function closeSheet() { G.sel = null; $('sheet').classList.remove('on'); requestDraw(); }
 
