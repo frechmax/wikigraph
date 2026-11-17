@@ -574,20 +574,20 @@ function renderMini() {
   box.innerHTML = `<div class="mh"><b>Im Graph</b><button type="button" id="miniAll">Ganzer Graph ›</button></div>`;
   $('miniAll').onclick = () => { G.focusKey = key; go('#graph'); };
   if (!nbs.length && !gh.length) { box.insertAdjacentHTML('beforeend', '<div class="mnote">Noch keine Verbindung zu anderen Artikeln, die du gelesen hast.</div>'); return; }
-  const W = 360, H = 280, cx = W / 2, cy = H / 2;
+  const W = 360, H = 300, cx = W / 2, cy = H / 2;
   const tr = (t, m) => t.length > m ? t.slice(0, m - 1) + '…' : t;
-  const place = (arr, r, off) => arr.map((x, i) => { const a = off + i / arr.length * Math.PI * 2 - Math.PI / 2; return Object.assign(x, { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r * .82, c: Math.cos(a) }); });
-  place(nbs, 92, 0); place(gh, 124, gh.length ? Math.PI / Math.max(gh.length, 1) : 0);
+  const place = (arr, r, off) => arr.map((x, i) => { const a = off + i / arr.length * Math.PI * 2 - Math.PI / 2; return Object.assign(x, { x: cx + Math.cos(a) * r * .8, y: cy + Math.sin(a) * r, c: Math.cos(a) }); });
+  place(nbs, 88, 0); place(gh, 128, gh.length ? Math.PI / Math.max(gh.length, 1) : 0);
   let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
   for (const x of nbs) svg += `<line x1="${cx}" y1="${cy}" x2="${x.x}" y2="${x.y}" style="stroke:var(${x.type === 'nav' ? '--accent' : '--sem'});stroke-width:${x.type === 'nav' ? 1.8 : 1.1}" ${x.type === 'nav' ? '' : 'stroke-dasharray="4 3"'}/>`;
   for (const g of gh) svg += `<line x1="${cx}" y1="${cy}" x2="${g.x}" y2="${g.y}" style="stroke:var(--ghost);stroke-width:1" stroke-dasharray="1.5 3"/>`;
-  const label = (x, y, c, t, cls) => { const anc = c > .3 ? 'start' : c < -.3 ? 'end' : 'middle'; const dx = c > .3 ? 9 : c < -.3 ? -9 : 0; const dy = Math.abs(c) <= .3 ? (y < cy ? -10 : 17) : 4;
-    return `<text x="${x + dx}" y="${y + dy}" text-anchor="${anc}" style="font:${cls === 'g' ? 'italic ' : ''}11px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(${cls === 'g' ? '--ghostink' : '--ink'})">${esc(t)}</text>`; };
-  for (const x of nbs) svg += `<g class="n" data-k="${esc(x.k)}"><circle cx="${x.x}" cy="${x.y}" r="14" fill="transparent"/><circle cx="${x.x}" cy="${x.y}" r="${5 + Math.min(4, Math.sqrt(x.n.visits.length) * 1.5)}" style="fill:var(${x.n.lang === 'de' ? '--accent' : '--accent2'})"/>${label(x.x, x.y, x.c, tr(x.n.title, 18), 'n')}</g>`;
-  for (const g of gh) svg += `<g class="n" data-k="${esc(g.key)}" data-g="1"><circle cx="${g.x}" cy="${g.y}" r="14" fill="transparent"/><circle cx="${g.x}" cy="${g.y}" r="5" style="fill:var(--bg);stroke:var(--ghost);stroke-width:1.5" stroke-dasharray="2.5 2"/>${label(g.x, g.y, g.c, tr(g.title, 18), 'g')}</g>`;
+  const label = (x, y, c, t, cls) => { const dy = y < cy - 5 ? -10 : 18;
+    return `<text x="${Math.max(48, Math.min(W - 48, x))}" y="${y + dy}" text-anchor="middle" style="font:${cls === 'g' ? 'italic ' : ''}11px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(${cls === 'g' ? '--ghostink' : '--ink'})">${esc(t)}</text>`; };
+  for (const x of nbs) svg += `<g class="n" data-k="${esc(x.k)}"><circle cx="${x.x}" cy="${x.y}" r="14" fill="transparent"/><circle cx="${x.x}" cy="${x.y}" r="${5 + Math.min(4, Math.sqrt(x.n.visits.length) * 1.5)}" style="fill:var(${x.n.lang === 'de' ? '--accent' : '--accent2'})"/>${label(x.x, x.y, x.c, tr(x.n.title, 15), 'n')}</g>`;
+  for (const g of gh) svg += `<g class="n" data-k="${esc(g.key)}" data-g="1"><circle cx="${g.x}" cy="${g.y}" r="14" fill="transparent"/><circle cx="${g.x}" cy="${g.y}" r="5" style="fill:var(--bg);stroke:var(--ghost);stroke-width:1.5" stroke-dasharray="2.5 2"/>${label(g.x, g.y, g.c, tr(g.title, 15), 'g')}</g>`;
   svg += `<circle cx="${cx}" cy="${cy}" r="10" style="fill:var(--ink)"/><text x="${cx}" y="${cy + 24}" text-anchor="middle" style="font:600 12px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(--ink)">${esc(tr(current.title, 26))}</text></svg>`;
   box.insertAdjacentHTML('beforeend', svg);
-  box.insertAdjacentHTML('beforeend', `<div class="mnote">${nbs.length ? nbs.length + ' gelesene Nachbarn' : ''}${nbs.length && gh.length ? ' · ' : ''}${gh.length ? gh.length + ' Vorschläge (gestrichelt)' : ''}</div>`);
+  box.insertAdjacentHTML('beforeend', `<div class="mnote">${nbs.length ? nbs.length + (nbs.length === 1 ? ' gelesener Nachbar' : ' gelesene Nachbarn') : ''}${nbs.length && gh.length ? ' · ' : ''}${gh.length ? gh.length + ' Vorschläge (gestrichelt)' : ''}</div>`);
   box.querySelectorAll('g.n').forEach(g => g.onclick = () => {
     const k = g.dataset.k, i = k.indexOf(':');
     const lang = k.slice(0, i), title = db.nodes[k] ? db.nodes[k].title : k.slice(i + 1);
