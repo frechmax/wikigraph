@@ -151,6 +151,14 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 #lbcap{color:#eee;font-size:14px;text-align:center;max-width:560px;max-height:18vh;overflow-y:auto}
 #lbfile{color:#9cc3ea;font-size:13px;text-decoration:none}
 #article button.phonos{border:0;background:none;padding:0 2px;font-size:15px;vertical-align:baseline;cursor:pointer}
+#article a[data-wt]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.resume{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + var(--bot));z-index:30;border:0;border-radius:99px;background:var(--accent);color:#fff;padding:10px 18px;font-size:14px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.pv{overflow:hidden}
+.pvimg{float:right;width:96px;height:96px;object-fit:cover;border-radius:8px;margin:0 0 6px 10px;background:#eee}
+.pvt{font-family:Georgia,"Times New Roman",serif;font-size:20px;line-height:1.2}
+.pvd{font-size:13px;color:var(--muted);margin-top:2px}
+.pvx{margin:8px 0 0;font-size:15px;line-height:1.45}
+.pvb{display:flex;gap:8px;margin-top:12px}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -289,23 +297,26 @@ let pendingFrom = null;    // set when a link inside an article is tapped
 let view = 'search';
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 function artHash(lang, title) { return '#a/' + lang + '/' + encodeURIComponent(title); }
-function openTitle(lang, title, from) { pendingFrom = from || null; go(artHash(lang, title)); }
+let navIntent = false;      // true = user opened an article (link/search); false = browser back/forward
+function openTitle(lang, title, from) { pendingFrom = from || null; navIntent = true; go(artHash(lang, title)); }
 function show(v) {
+  const was = view;
   view = v;
   document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + v));
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   if (v === 'graph') graphEnter();
   if (v === 'more') renderMore();
   if (v === 'search') renderHome();
+  if (v === 'read' && was !== 'read') { const y = readY; requestAnimationFrame(() => { $('v-read').scrollTop = y; }); }
 }
 function route() {
   const h = location.hash.slice(1);
   if (h.startsWith('a/')) {
     const [, lang, ...rest] = h.split('/');
     const title = decodeURIComponent(rest.join('/'));
-    const from = pendingFrom; pendingFrom = null;
-    show('read');
-    if (!current || current.lang !== lang || current.title !== title) openArticle(lang, title, from);
+    const from = pendingFrom, restore = !navIntent; pendingFrom = null; navIntent = false;
+    if (!current || current.lang !== lang || current.title !== title) { stash(); show('read'); openArticle(lang, title, from, restore); }
+    else show('read');
   } else if (['graph', 'more', 'search', 'read'].includes(h)) show(h);
   else show('search');
 }
@@ -399,18 +410,88 @@ function renderHome() {
   }, { passive: true });
 })();
 let rTok = 0;
+let readY = 0;                                  // last scroll position in the reader
+const pageCache = new Map();                    // key -> rendered article, for instant back
+const P_KEY = 'wikigraph.pos';
+let posStore = {}; try { posStore = JSON.parse(localStorage.getItem(P_KEY) || '{}'); } catch (e) {}
+function openSecs() { return [...$('article').querySelectorAll('details.sec')].map((d, i) => d.open ? i : -1).filter(i => i >= 0); }
+let posT;
+function savePos() {
+  if (!current || !$('article').querySelector('.mw-parser-output')) return;
+  const k = K(current.lang, current.title);
+  delete posStore[k];
+  posStore[k] = { y: readY, open: openSecs() };
+  const ks = Object.keys(posStore); if (ks.length > 80) delete posStore[ks[0]];
+  try { localStorage.setItem(P_KEY, JSON.stringify(posStore)); } catch (e) {}
+}
+$('v-read').addEventListener('scroll', () => { if (view === 'read') { readY = $('v-read').scrollTop; clearTimeout(posT); posT = setTimeout(savePos, 500); } }, { passive: true });
+$('article').addEventListener('toggle', () => { clearTimeout(posT); posT = setTimeout(savePos, 300); }, true);
+window.addEventListener('pagehide', savePos);
+document.addEventListener('visibilitychange', () => { if (document.hidden) savePos(); });
+function stash() {
+  if (!current || !$('article').querySelector('.mw-parser-output')) return;
+  savePos();
+  const k = K(current.lang, current.title);
+  pageCache.delete(k);
+  pageCache.set(k, { t: current.title, lang: current.lang, art: [...$('article').childNodes], meta: [...$('rmeta').childNodes], y: readY });
+  while (pageCache.size > 20) pageCache.delete(pageCache.keys().next().value);
+}
+function applyPos(pos) {
+  const ds = $('article').querySelectorAll('details.sec');
+  (pos.open || []).forEach(i => { if (ds[i]) ds[i].open = true; });
+  requestAnimationFrame(() => { $('v-read').scrollTop = pos.y; readY = pos.y; });
+}
+function resumePill(pos) {
+  if (!pos || pos.y < 600) return;
+  const b = document.createElement('button'); b.className = 'resume'; b.type = 'button'; b.textContent = '↓ Weiterlesen, wo du warst';
+  b.onclick = () => { b.remove(); applyPos(pos); };
+  $('v-read').appendChild(b);
+  setTimeout(() => b.remove(), 7000);
+}
+function recordVisit(lang, t, from, out, props) {
+  const key = K(lang, t), now = Date.now();
+  let n = db.nodes[key];
+  if (!n) n = db.nodes[key] = { title: t, lang, visits: [], first: now };
+  const lastV = n.visits[n.visits.length - 1] || 0;
+  if (now - lastV > 5 * 60e3) n.visits.push(now);
+  n.last = now;
+  if (out) n.out = out.slice(0, 1200);
+  if (props && props.wikibase_item) n.qid = props.wikibase_item;
+  if (props && props['wikibase-shortdesc']) n.desc = props['wikibase-shortdesc'];
+  if (from) {
+    const fk = K(from.lang, from.title);
+    const le = db.edges[db.edges.length - 1];
+    if (fk !== key && db.nodes[fk] && !(le && le.f === fk && le.t === key && now - le.ts < 5 * 60e3)) db.edges.push({ f: fk, t: key, ts: now });
+  }
+  save();
+  G.dirty = true;
+  return n;
+}
 $('back').onclick = () => history.back();
 $('toGraph').onclick = () => { if (current) { G.focusKey = K(current.lang, current.title); } go('#graph'); };
 function hrefTitle(h) {
   try { return decodeURIComponent(h.slice(6).split('#')[0]).replace(/_/g, ' '); } catch (e) { return null; }
 }
-async function openArticle(lang, title, from) {
+async function openArticle(lang, title, from, restore) {
   const tok = ++rTok;
   const art = $('article');
+  document.querySelectorAll('#v-read .resume').forEach(b => b.remove());
+  $('v-read').querySelector('.bar').classList.remove('hide');
+  const ck = resolve(K(lang, title)), cached = pageCache.get(ck);
+  if (cached) {                       // instant: reuse the rendered page
+    pageCache.delete(ck);
+    current = { lang, title: cached.t };
+    if (cached.t !== title) history.replaceState(null, '', artHash(lang, cached.t));
+    $('rtitle').textContent = cached.t;
+    art.replaceChildren(...cached.art); $('rmeta').replaceChildren(...cached.meta);
+    recordVisit(lang, cached.t, from);
+    if (restore) { requestAnimationFrame(() => { $('v-read').scrollTop = cached.y; readY = cached.y; }); }
+    else { $('v-read').scrollTop = 0; readY = 0; resumePill(posStore[ck]); }
+    return;
+  }
   $('rtitle').textContent = title; $('rmeta').innerHTML = '';
   art.innerHTML = '<div class="loading">Lädt …</div>';
-  $('v-read').scrollTop = 0;
-  $('v-read').querySelector('.bar').classList.remove('hide');
+  $('v-read').scrollTop = 0; readY = 0;
   let d;
   try {
     d = await api(lang, { action: 'parse', page: title, prop: 'text|links|properties|displaytitle', redirects: 1, disableeditsection: 1, disabletoc: 1 });
@@ -458,22 +539,8 @@ async function openArticle(lang, title, from) {
     else a.dataset.anchor = h.slice(1);
   });
   // record visit
-  const key = K(lang, t), now = Date.now();
-  let n = db.nodes[key];
-  if (!n) n = db.nodes[key] = { title: t, lang, visits: [], first: now };
-  const lastV = n.visits[n.visits.length - 1] || 0;
-  if (now - lastV > 5 * 60e3) n.visits.push(now);
-  n.last = now;
-  n.out = out.slice(0, 1200);
-  if (props.wikibase_item) n.qid = props.wikibase_item;
-  if (props['wikibase-shortdesc']) n.desc = props['wikibase-shortdesc'];
-  if (from) {
-    const fk = K(from.lang, from.title);
-    const le = db.edges[db.edges.length - 1];
-    if (fk !== key && db.nodes[fk] && !(le && le.f === fk && le.t === key && now - le.ts < 5 * 60e3)) db.edges.push({ f: fk, t: key, ts: now });
-  }
-  save();
-  G.dirty = true;
+  const key = K(lang, t);
+  const n = recordVisit(lang, t, from, out, props);
 
   // render
   $('rtitle').textContent = t;
@@ -496,6 +563,9 @@ async function openArticle(lang, title, from) {
     };
     $('rmeta').appendChild(tg);
   }
+  const pos = posStore[key];
+  if (pos && restore) applyPos(pos); else resumePill(pos);
+  if (!db.tipPreview) { db.tipPreview = 1; save(); setTimeout(() => toast('Tipp: Link lang drücken = Vorschau'), 1200); }
 }
 /* wrap every h2 chapter into a collapsible <details>, like mobile Wikipedia */
 function makeSections(root) {
@@ -572,7 +642,37 @@ $('pop').onclick = e => {
   if (!e.target.closest('#popbody') || e.target.closest('.popclose')) $('pop').classList.remove('on');
 };
 window.addEventListener('hashchange', () => { $('pop').classList.remove('on'); $('lb').classList.remove('on'); });
+/* long-press on a link: preview card instead of leaving the page */
+let lpT = null, lpStart = null, lpFired = false;
+$('article').addEventListener('pointerdown', e => {
+  lpFired = false;
+  const a = e.target.closest('a[data-wt]'); if (!a) return;
+  lpStart = { x: e.clientX, y: e.clientY };
+  clearTimeout(lpT);
+  lpT = setTimeout(() => { lpFired = true; if (navigator.vibrate) try { navigator.vibrate(10); } catch (err) {} showPreview(current.lang, a.dataset.wt); }, 450);
+});
+$('article').addEventListener('pointermove', e => { if (lpT && lpStart && Math.hypot(e.clientX - lpStart.x, e.clientY - lpStart.y) > 10) { clearTimeout(lpT); lpT = null; } });
+['pointerup', 'pointercancel'].forEach(t => $('article').addEventListener(t, () => { clearTimeout(lpT); lpT = null; if (lpFired) setTimeout(() => { lpFired = false; }, 700); }));
+$('article').addEventListener('contextmenu', e => { if (e.target.closest('a[data-wt]')) e.preventDefault(); });
+let pvTok = 0;
+async function showPreview(lang, title) {
+  const tok = ++pvTok, from = current;
+  const n = db.nodes[resolve(K(lang, title))];
+  const pb = $('popbody');
+  pb.innerHTML = `<div class="pophead">Vorschau</div><div class="pv"><div class="pvt">${esc(title)}</div><div class="loading" style="padding:16px">Lädt …</div></div>`;
+  $('pop').classList.add('on');
+  let d = null;
+  try { d = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`).then(r => r.ok ? r.json() : null); } catch (e) {}
+  if (tok !== pvTok) return;
+  pb.innerHTML = `<div class="pophead">Vorschau${n ? ' · ' + n.visits.length + '× gelesen' : ''}</div>
+    <div class="pv">${d && d.thumbnail ? `<img class="pvimg" src="${esc(d.thumbnail.source)}" alt="">` : ''}
+    <div class="pvt">${esc(d ? d.title : title)}</div>${d && d.description ? `<div class="pvd">${esc(d.description)}</div>` : ''}
+    <p class="pvx">${esc(d ? (d.extract || '') : 'Keine Vorschau verfügbar.')}</p></div>
+    <div class="pvb"><button class="btn" data-read>Lesen</button><button class="btn sec popclose">Schließen</button></div>`;
+  pb.querySelector('[data-read]').onclick = () => { $('pop').classList.remove('on'); openTitle(lang, title, from); };
+}
 $('article').addEventListener('click', e => {
+  if (lpFired) { lpFired = false; e.preventDefault(); e.stopPropagation(); return; }
   const a = e.target.closest('a');
   const ph = e.target.closest('button.phonos');
   if (ph) { try { (window._au = window._au || new Audio()).src = ph.dataset.audio; window._au.play().catch(() => toast('Audio nicht abspielbar')); } catch (err) {} return; }
