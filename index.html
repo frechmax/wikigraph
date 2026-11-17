@@ -110,6 +110,23 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .day{font-size:13px;font-weight:600;margin:16px 0 2px;color:var(--muted)}
 .hrow{display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .hrow .tm{font-size:12px;color:var(--muted);flex:none}
+#article .ibwrap{position:relative;margin:12px 0}
+#article .ibwrap.cut{max-height:420px;overflow:hidden}
+#article .ibwrap.cut::after{content:"";position:absolute;left:0;right:0;bottom:0;height:110px;background:linear-gradient(rgba(247,246,242,0),var(--bg) 75%);pointer-events:none}
+#article .ibmore{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);z-index:2;border:1px solid var(--line);background:#fff;border-radius:99px;padding:7px 14px;font-size:14px;color:var(--accent);white-space:nowrap}
+#article .ibwrap:not(.cut) .ibmore{position:static;transform:none;display:block;margin:8px auto 0}
+#article .ibwrap .infobox{margin:0!important}
+#pop{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.25);display:none;align-items:flex-end}
+#pop.on{display:flex}
+#popbody{background:#fff;width:100%;max-height:60%;overflow-y:auto;border-radius:16px 16px 0 0;padding:16px 18px calc(22px + var(--bot));font-size:15px;line-height:1.5;box-shadow:0 -6px 24px rgba(0,0,0,.12)}
+#popbody .pophead{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+#popbody a{color:var(--accent);text-decoration:none;overflow-wrap:anywhere}
+#popbody li{list-style:none}
+#lb{position:fixed;inset:0;z-index:45;background:rgba(10,10,10,.94);display:none;flex-direction:column;align-items:center;justify-content:center;padding:calc(20px + var(--top)) 12px calc(20px + var(--bot));gap:12px}
+#lb.on{display:flex}
+#lb img{max-width:100%;max-height:72vh;object-fit:contain;background:#fff;border-radius:4px}
+#lbcap{color:#eee;font-size:14px;text-align:center;max-width:560px;max-height:18vh;overflow-y:auto}
+#lbfile{color:#9cc3ea;font-size:13px;text-decoration:none}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -191,6 +208,8 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
   <button data-v="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Verlauf</button>
 </nav>
 <div id="toast"></div>
+<div id="pop"><div id="popbody"></div></div>
+<div id="lb"><img id="lbimg" alt=""><div id="lbcap"></div><a id="lbfile" target="_blank" rel="noopener">Dateiseite auf Wikipedia ↗</a></div>
 
 <script>
 "use strict";
@@ -408,7 +427,10 @@ async function openArticle(lang, title, from) {
   const h1 = document.createElement('h1'); h1.className = 'at'; h1.innerHTML = p.displaytitle || esc(t);
   art.appendChild(h1);
   makeSections(root);
+  leadFirst(root);
+  const ibw = wrapInfobox(root);
   art.appendChild(root);
+  if (ibw) requestAnimationFrame(() => { if (ibw.scrollHeight < 460) { ibw.classList.remove('cut'); ibw.querySelector('.ibmore').remove(); } });
   if (root.querySelector('details.sec')) {
     const tg = document.createElement('a'); tg.href = '#'; tg.textContent = 'alle aufklappen';
     tg.onclick = e => {
@@ -438,9 +460,63 @@ function makeSections(root) {
     } else if (det) body.appendChild(el);
   }
 }
+/* like mobile Wikipedia: first real paragraph before the infobox / lead images */
+function leadFirst(root) {
+  const box = root.querySelector('.mw-parser-output') || root;
+  const lead = [];
+  for (const el of box.children) { if (el.matches('details.sec')) break; lead.push(el); }
+  const p = lead.find(el => el.tagName === 'P' && !el.classList.contains('mw-empty-elt') && el.textContent.trim().length > 40);
+  if (!p) return;
+  const first = lead.find(el => el.matches('table, figure, div') && !el.matches('.hatnote, .dablink, .mw-heading'));
+  if (first && lead.indexOf(first) < lead.indexOf(p)) box.insertBefore(p, first);
+}
+/* long infoboxes are cut to a preview with "show all", instead of pushing the text 3 screens down */
+function wrapInfobox(root) {
+  const ib = root.querySelector('table.infobox, table.toptextcells, table.float-right');
+  if (!ib || ib.closest('details.sec')) return null;
+  const w = document.createElement('div'); w.className = 'ibwrap cut';
+  ib.parentNode.insertBefore(w, ib); w.appendChild(ib);
+  const b = document.createElement('button'); b.className = 'ibmore'; b.type = 'button'; b.textContent = 'Steckbrief ganz anzeigen';
+  b.onclick = () => { const cut = w.classList.toggle('cut'); b.textContent = cut ? 'Steckbrief ganz anzeigen' : 'Steckbrief einklappen'; if (cut) w.scrollIntoView({ block: 'nearest' }); };
+  w.appendChild(b);
+  return w;
+}
+/* reference popup (instead of jumping to the bottom) */
+function showRef(id) {
+  const li = $('article').querySelector('[id="' + CSS.escape(id) + '"]');
+  if (!li) return false;
+  const c = li.cloneNode(true);
+  c.querySelectorAll('.mw-cite-backlink, .cite-accessibility-label').forEach(x => x.remove());
+  c.removeAttribute('id');
+  const num = (id.match(/(\d+)$/) || [])[1];
+  $('popbody').innerHTML = `<div class="pophead">Einzelnachweis${num ? ' ' + num : ''}</div>`;
+  $('popbody').appendChild(c);
+  $('pop').classList.add('on');
+  return true;
+}
+function showImage(a) {
+  const img = a.querySelector('img');
+  const ss = (img.getAttribute('srcset') || '').split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
+  const fig = a.closest('figure, .thumb, .gallerybox');
+  const cap = fig && fig.querySelector('figcaption, .thumbcaption, .gallerytext');
+  $('lbimg').src = ss.length ? ss[ss.length - 1] : img.src;
+  $('lbcap').textContent = cap ? cap.textContent.trim() : (img.alt || '');
+  $('lbfile').href = a.href;
+  $('lb').classList.add('on');
+}
+$('lb').onclick = e => { if (e.target.id !== 'lbfile') $('lb').classList.remove('on'); };
+$('pop').onclick = e => {
+  const a = e.target.closest('a');
+  if (a && a.dataset.wt) { e.preventDefault(); $('pop').classList.remove('on'); openTitle(current.lang, a.dataset.wt, current); return; }
+  if (a && a.dataset.anchor) { e.preventDefault(); return; }
+  if (!e.target.closest('#popbody') || e.target.closest('.popclose')) $('pop').classList.remove('on');
+};
+window.addEventListener('hashchange', () => { $('pop').classList.remove('on'); $('lb').classList.remove('on'); });
 $('article').addEventListener('click', e => {
   const a = e.target.closest('a'); if (!a) return;
-  if (a.dataset.wt) { e.preventDefault(); openTitle(current.lang, a.dataset.wt, current); }
+  if (a.classList.contains('mw-file-description') && a.querySelector('img')) { e.preventDefault(); showImage(a); }
+  else if (a.dataset.wt) { e.preventDefault(); openTitle(current.lang, a.dataset.wt, current); }
+  else if (a.dataset.anchor && a.closest('sup.reference') && showRef(a.dataset.anchor)) { e.preventDefault(); }
   else if (a.dataset.anchor) {
     e.preventDefault();
     const el = $('article').querySelector('[id="' + CSS.escape(a.dataset.anchor) + '"]');
