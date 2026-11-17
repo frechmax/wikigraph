@@ -308,7 +308,7 @@ function show(v) {
   if (v === 'graph') graphEnter();
   if (v === 'more') renderMore();
   if (v === 'search') renderHome();
-  if (v === 'read' && was !== 'read') { const y = readY; requestAnimationFrame(() => { $('v-read').scrollTop = y; }); }
+  if (v === 'read' && was !== 'read') { $('v-read').scrollTop = readY; }
 }
 function route() {
   const h = location.hash.slice(1);
@@ -441,7 +441,7 @@ function stash() {
 function applyPos(pos) {
   const ds = $('article').querySelectorAll('details.sec');
   (pos.open || []).forEach(i => { if (ds[i]) ds[i].open = true; });
-  requestAnimationFrame(() => { $('v-read').scrollTop = pos.y; readY = pos.y; });
+  $('v-read').scrollTop = pos.y; readY = pos.y;
 }
 function resumePill(pos) {
   if (!pos || pos.y < 600) return;
@@ -487,7 +487,7 @@ async function openArticle(lang, title, from, restore) {
     $('rtitle').textContent = cached.t;
     art.replaceChildren(...cached.art); $('rmeta').replaceChildren(...cached.meta);
     recordVisit(lang, cached.t, from);
-    if (restore) { requestAnimationFrame(() => { $('v-read').scrollTop = cached.y; readY = cached.y; }); }
+    if (restore) { $('v-read').scrollTop = cached.y; readY = cached.y; }
     else { $('v-read').scrollTop = 0; readY = 0; resumePill(posStore[ck]); }
     return;
   }
