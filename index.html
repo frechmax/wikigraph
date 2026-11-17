@@ -196,6 +196,38 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .pvd{font-size:13px;color:var(--muted);margin-top:2px}
 .pvx{margin:8px 0 0;font-size:15px;line-height:1.45}
 .pvb{display:flex;gap:8px;margin-top:12px}
+.ghead{display:flex;align-items:center;gap:2px}
+.gtitle{flex:1;min-width:0}
+.gstat{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gsearch{display:none;margin-top:8px}
+.gsearch.on{display:block}
+.gsearch input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:16px;outline:none}
+#gres button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:9px 4px;font-size:15px}
+#gres small,.clusters small{color:var(--muted);font-size:11px}
+.gnone{font-size:13px;color:var(--muted);padding:8px 4px}
+.clusters{display:flex;gap:6px;margin-top:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}
+.clusters::-webkit-scrollbar{display:none}
+.clusters .chip i,.cltag i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
+.focuschip{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--gtop,120px) + 8px);display:none;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:5px 6px 5px 12px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.1);max-width:92%;z-index:4}
+.focuschip.on{display:flex}
+.focuschip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.focuschip button{border:0;background:var(--btn2);border-radius:99px;padding:3px 9px;font-size:12px;flex:none}
+.playlab{position:absolute;left:12px;bottom:12px;font-size:22px;font-weight:700;color:var(--ink);opacity:0;transition:opacity .3s;pointer-events:none;z-index:4}
+.playlab.on{opacity:.85}
+.sheet .sbtns{display:flex;flex-wrap:wrap;gap:6px}
+.sheet .sbtns .btn{padding:8px 13px;font-size:14px}
+.sheet .nbh{font-size:12px;color:var(--muted);margin-top:12px}
+.sheet .nb{margin-top:6px}
+.sheet .chip.gh{border-style:dashed;color:var(--ghostink)}
+.sheet .shx{position:absolute;right:8px;top:8px;border:0;background:none;font-size:16px;color:var(--muted);padding:6px}
+.sheet .st{padding-right:28px}
+.cltag{display:inline-block;margin-left:2px;white-space:nowrap}
+.frow{display:flex;flex-wrap:wrap;gap:6px}
+.flab{font-size:12px;color:var(--muted);margin:14px 0 6px}
+#popbody .time{margin-top:0}
+#popbody .time .btn{padding:6px 12px}
+.legend2{font-size:13px;color:var(--muted);line-height:1.9}
+.legend2 i{display:inline-block;width:20px;height:0;border-top:2px solid;vertical-align:middle;margin-right:8px}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -238,18 +270,20 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 <!-- GRAPH -->
 <section class="view" id="v-graph">
   <div class="bar" id="gbar">
-    <h1>Dein Graph</h1>
-    <div class="gtools">
-      <button class="chip on" id="tGhost">Vorschläge</button>
-      <button class="chip on" id="tSem">Querverbindungen</button>
-      <button class="chip on" id="tLbl">Labels</button>
-      <button class="chip" id="tFit">Zentrieren</button>
+    <div class="ghead">
+      <div class="gtitle"><h1>Dein Graph</h1><div class="gstat" id="gstat"></div></div>
+      <button class="icobtn" id="gSearchBtn" aria-label="Im Graph suchen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button>
+      <button class="icobtn" id="gHere" aria-label="Aktueller Artikel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg></button>
+      <button class="icobtn" id="gFit" aria-label="Alles zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button class="icobtn" id="gFilter" aria-label="Ansicht"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
     </div>
-    <div class="time"><input type="range" id="tl" min="0" max="1000" value="1000"><span id="tlv">Alles</span></div>
+    <div class="gsearch" id="gsearch"><input id="gq" type="search" placeholder="Im Graph suchen" autocomplete="off"><div id="gres"></div></div>
+    <div class="clusters" id="clusters"></div>
   </div>
   <canvas id="cv"></canvas>
-  <div class="legend"><div><i style="border-color:var(--accent)"></i>geklickt</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag</div></div>
   <div class="gempty" id="gempty" style="display:none">Lies ein paar Artikel, dann wächst hier dein Graph.</div>
+  <div class="focuschip" id="focuschip"></div>
+  <div class="playlab" id="playlab"></div>
   <div class="sheet" id="sheet"></div>
 </section>
 
@@ -813,7 +847,7 @@ $('article').addEventListener('pointermove', e => { if (lpT && lpStart && Math.h
 $('article').addEventListener('contextmenu', e => { if (e.target.closest('a[data-wt]')) e.preventDefault(); });
 let pvTok = 0;
 async function showPreview(lang, title) {
-  const tok = ++pvTok, from = current;
+  const tok = ++pvTok, from = view === 'read' ? current : null;
   const n = db.nodes[resolve(K(lang, title))];
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Vorschau</div><div class="pv"><div class="pvt">${esc(title)}</div><div class="loading" style="padding:16px">Lädt …</div></div>`;
@@ -884,13 +918,51 @@ function analyze(tMax) {
 
 /* ---------- graph view ---------- */
 const cv = $('cv'), ctx = cv.getContext('2d');
-const G = { nodes: [], links: [], by: new Map(), cam: { x: 0, y: 0, k: 1 }, sel: null, alpha: 0, ghost: true, sem: true, lbl: true, tMax: Infinity, dirty: true, focusKey: null, W: 0, H: 0, dpr: 1, raf: 0, fitted: false };
+const G = { nodes: [], links: [], by: new Map(), cam: { x: 0, y: 0, k: 1 }, sel: null, alpha: 0, ghost: true, sem: true, lbl: true, color: 'topic',
+  tMax: Infinity, dirty: true, focusKey: null, W: 0, H: 0, dpr: 1, raf: 0, fitted: false, clusters: [], hiCl: null, focus: null, focusDepth: 1, focusSet: null, anim: null };
+const PAL_L = ['#2f5d8a', '#b5543c', '#3f8a5b', '#8a5aa8', '#c08a2b', '#2f8a8a', '#a8466e', '#6b7a2f'];
+const PAL_D = ['#86b4e3', '#e58d75', '#79c493', '#c09ae0', '#e5b45f', '#6cc6c6', '#e081a8', '#b3c46b'];
+const pal = i => (document.documentElement.dataset.theme === 'dark' ? PAL_D : PAL_L)[i];
 function sizeCanvas() {
   const top = $('gbar').offsetHeight;
   const W = cv.parentElement.clientWidth, H = cv.parentElement.clientHeight - top;
   G.dpr = window.devicePixelRatio || 1; G.W = W; G.H = H;
   cv.style.top = top + 'px'; cv.style.height = H + 'px';
+  $('v-graph').style.setProperty('--gtop', top + 'px');
   cv.width = Math.round(W * G.dpr); cv.height = Math.round(H * G.dpr);
+}
+/* topic clusters via label propagation over clicked + linked connections */
+function computeClusters(nodes, links) {
+  const vis = nodes.filter(n => !n.ghost), lab = new Map(vis.map(n => [n, n.key])), nb = new Map(vis.map(n => [n, []]));
+  for (const l of links) { if (l.type === 'ghost') continue; const w = l.type === 'nav' ? 2 : 1; nb.get(l.a).push([l.b, w]); nb.get(l.b).push([l.a, w]); }
+  const order = vis.slice().sort((a, b) => b.w - a.w || a.key.localeCompare(b.key));
+  for (let it = 0; it < 20; it++) {
+    let ch = false;
+    for (const n of order) {
+      const sc = new Map();
+      for (const [m, w] of nb.get(n)) sc.set(lab.get(m), (sc.get(lab.get(m)) || 0) + w);
+      if (!sc.size) continue;
+      let best = lab.get(n), bw = sc.get(best) || 0;
+      for (const [l, w] of sc) if (w > bw || (w === bw && l < best)) { best = l; bw = w; }
+      if (best !== lab.get(n)) { lab.set(n, best); ch = true; }
+    }
+    if (!ch) break;
+  }
+  const groups = new Map();
+  for (const n of vis) { const l = lab.get(n); if (!groups.has(l)) groups.set(l, []); groups.get(l).push(n); }
+  const cl = [...groups.values()].sort((a, b) => b.length - a.length || b.reduce((s, n) => s + n.w, 0) - a.reduce((s, n) => s + n.w, 0));
+  G.clusters = [];
+  nodes.forEach(n => n.cl = -1);
+  cl.forEach(members => {
+    if (members.length < 2 || G.clusters.length >= 8) return;
+    const id = G.clusters.length, top = members.slice().sort((a, b) => b.w - a.w)[0];
+    members.forEach(n => n.cl = id);
+    G.clusters.push({ id, name: top.title, members });
+  });
+  for (const n of nodes) if (n.ghost) { // ghosts inherit the cluster most of their sources belong to
+    const c = new Map(); n.from.forEach(f => { const m = G.by.get(f); if (m && m.cl >= 0) c.set(m.cl, (c.get(m.cl) || 0) + 1); });
+    let b = -1, bw = 0; for (const [k, w] of c) if (w > bw) { b = k; bw = w; } n.cl = b;
+  }
 }
 function rebuild() {
   const an = analyze(G.tMax);
@@ -902,14 +974,13 @@ function rebuild() {
     const a = Math.random() * 6.283, r = 30 + Math.random() * 40;
     return nb ? { x: nb.x + Math.cos(a) * r, y: nb.y + Math.sin(a) * r } : { x: (Math.random() - .5) * 300, y: (Math.random() - .5) * 300 };
   };
-  // neighbour hint for placement
   const nbr = new Map();
   for (const l of an.links) { if (!nbr.has(l.s)) nbr.set(l.s, l.t); if (!nbr.has(l.t)) nbr.set(l.t, l.s); }
   const visSorted = an.vis.slice().sort((a, b) => db.nodes[a].first - db.nodes[b].first);
   for (const k of visSorted) {
     const n = db.nodes[k];
     const p = place(k, nbr.get(k));
-    const o = { key: k, title: n.title, lang: n.lang, ghost: false, w: n.visits.filter(t => t <= G.tMax).length || 1, x: p.x, y: p.y, vx: 0, vy: 0 };
+    const o = { key: k, title: n.title, lang: n.lang, ghost: false, w: n.visits.filter(t => t <= G.tMax).length || 1, last: n.last || n.first, x: p.x, y: p.y, vx: 0, vy: 0 };
     o.r = 6 + Math.sqrt(o.w) * 3.2;
     nodes.push(o); by.set(k, o);
   }
@@ -918,18 +989,53 @@ function rebuild() {
     const max = Math.max(6, Math.min(25, Math.round(an.vis.length / 3)));
     for (const g of an.ghosts.slice(0, max)) {
       const p = place(g.key, g.from[0]);
-      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, from: g.from, x: p.x, y: p.y, vx: 0, vy: 0, r: 5 };
+      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 5 };
       nodes.push(o); by.set(g.key, o);
       for (const f of g.from) links.push({ s: f, t: g.key, type: 'ghost', a: by.get(f), b: o });
     }
   }
   G.nodes = nodes; G.links = links; G.by = by;
-  // adjacency
   nodes.forEach(n => n.adj = new Set());
   links.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
+  computeClusters(nodes, links);
+  if (G.hiCl != null && !G.clusters[G.hiCl]) G.hiCl = null;
   if (G.sel && !by.has(G.sel.key)) closeSheet(); else if (G.sel) G.sel = by.get(G.sel.key);
+  if (G.focus && !by.has(G.focus)) G.focus = null;
+  computeFocus();
+  renderGraphHeader(an);
   $('gempty').style.display = nodes.length ? 'none' : 'flex';
   G.dirty = false;
+}
+function computeFocus() {
+  G.focusSet = null;
+  const n = G.focus && G.by.get(G.focus);
+  if (!n) { $('focuschip').classList.remove('on'); return; }
+  const set = new Set([n]); let front = [n];
+  for (let d = 0; d < G.focusDepth; d++) { const nx = []; for (const m of front) for (const o of m.adj) if (!set.has(o)) { set.add(o); nx.push(o); } front = nx; }
+  G.focusSet = set;
+  const fc = $('focuschip');
+  fc.innerHTML = `<span>Fokus: <b>${esc(n.title)}</b></span><button type="button" data-d>${G.focusDepth === 1 ? '1 Schritt' : '2 Schritte'}</button><button type="button" data-x aria-label="Fokus beenden">✕</button>`;
+  fc.classList.add('on');
+  fc.querySelector('[data-d]').onclick = () => { G.focusDepth = G.focusDepth === 1 ? 2 : 1; computeFocus(); fitNodes([...G.focusSet]); };
+  fc.querySelector('[data-x]').onclick = () => { G.focus = null; computeFocus(); requestDraw(); };
+}
+function renderGraphHeader(an) {
+  const nv = an.vis.length, nl = an.links.length;
+  $('gstat').textContent = nv ? `${nv} Artikel · ${nl} Verbindungen${G.clusters.length ? ' · ' + G.clusters.length + ' Themen' : ''}` : '';
+  const c = $('clusters'); c.innerHTML = '';
+  if (!G.clusters.length) { c.style.display = 'none'; return; }
+  c.style.display = '';
+  const mk = (label, id, color, count) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip' + (G.hiCl === id ? ' on' : '');
+    b.innerHTML = (color ? `<i style="background:${color}"></i>` : '') + esc(label) + (count ? ` <small>${count}</small>` : '');
+    b.onclick = () => {
+      G.hiCl = G.hiCl === id || id == null ? null : id; closeSheet(); renderGraphHeader(an);
+      if (G.hiCl != null) fitNodes(G.clusters[G.hiCl].members); else fit();
+    };
+    return b;
+  };
+  c.appendChild(mk('Alle Themen', null));
+  G.clusters.forEach(cl => c.appendChild(mk(cl.name, cl.id, pal(cl.id), cl.members.length)));
 }
 function heat(a) { G.alpha = Math.max(G.alpha, a); loop(); }
 function tick() {
@@ -956,6 +1062,7 @@ function tick() {
     p.vx += dx; p.vy += dy; q.vx -= dx; q.vy -= dy;
   }
   for (const p of N) {
+    if (p.fixed) { p.vx = p.vy = 0; continue; }
     p.vx -= p.x * .004 * a; p.vy -= p.y * .004 * a;
     p.vx *= .6; p.vy *= .6;
     p.x += p.vx; p.y += p.vy;
@@ -967,38 +1074,57 @@ function loop() {
   const step = () => {
     G.raf = 0;
     if (view !== 'graph') return;
+    const animating = stepAnim();
     if (G.alpha > .004) { tick(); tick(); }
     draw();
-    if (G.alpha > .004) G.raf = requestAnimationFrame(step);
+    if (G.alpha > .004 || animating) G.raf = requestAnimationFrame(step);
     else persistPos();
   };
   G.raf = requestAnimationFrame(step);
 }
-function requestDraw() { if (!G.raf) G.raf = requestAnimationFrame(() => { G.raf = 0; draw(); if (G.alpha > .004) loop(); }); }
+function requestDraw() { loop(); }
 function persistPos() {
   for (const n of G.nodes) db.pos[n.key] = [Math.round(n.x), Math.round(n.y)];
   save();
 }
+/* smooth camera moves */
+function flyTo(x, y, k) { G.anim = { from: { ...G.cam }, to: { x, y, k }, t0: performance.now(), d: 380 }; loop(); }
+function stepAnim() {
+  const a = G.anim; if (!a) return false;
+  const t = Math.min(1, (performance.now() - a.t0) / a.d), e = 1 - Math.pow(1 - t, 3);
+  G.cam.x = a.from.x + (a.to.x - a.from.x) * e; G.cam.y = a.from.y + (a.to.y - a.from.y) * e; G.cam.k = a.from.k + (a.to.k - a.from.k) * e;
+  if (t >= 1) G.anim = null;
+  return true;
+}
 const toScreen = (x, y) => [G.W / 2 + G.cam.x + x * G.cam.k, G.H / 2 + G.cam.y + y * G.cam.k];
 const toWorld = (sx, sy) => [(sx - G.W / 2 - G.cam.x) / G.cam.k, (sy - G.H / 2 - G.cam.y) / G.cam.k];
+const shown = n => !G.focusSet || G.focusSet.has(n);
+function nodeColor(n) {
+  if (G.color === 'lang') return n.lang === 'de' ? TC.accent : TC.accent2;
+  if (G.color === 'recent') return TC.accent;
+  return n.cl >= 0 ? pal(n.cl) : TC.sem;
+}
 function draw() {
   const { W, H, dpr, cam } = G;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
   ctx.translate(W / 2 + cam.x, H / 2 + cam.y);
   ctx.scale(cam.k, cam.k);
-  const sel = G.sel, k = cam.k;
-  const lit = n => !sel || n === sel || sel.adj.has(n);
+  const sel = G.sel, k = cam.k, hc = G.hiCl;
+  const lit = n => sel ? (n === sel || sel.adj.has(n)) : hc != null ? n.cl === hc : true;
+  const curKey = current ? K(current.lang, current.title) : null;
+  const now = Date.now();
   // links
   for (const l of G.links) {
-    const on = !sel || l.a === sel || l.b === sel;
-    ctx.globalAlpha = on ? 1 : .12;
+    if (!shown(l.a) || !shown(l.b)) continue;
+    const on = sel ? (l.a === sel || l.b === sel) : hc != null ? (l.a.cl === hc && l.b.cl === hc) : true;
+    ctx.globalAlpha = on ? 1 : .08;
     ctx.beginPath(); ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.b.x, l.b.y);
     if (l.type === 'nav') { ctx.strokeStyle = TC.accent; ctx.lineWidth = Math.min(4, 1.2 + l.c * .5) / Math.sqrt(k); ctx.setLineDash([]); }
     else if (l.type === 'sem') { ctx.strokeStyle = TC.sem; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([5 / k, 4 / k]); }
     else { ctx.strokeStyle = TC.ghost; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([1.5 / k, 3 / k]); }
     ctx.stroke();
-    if (l.type === 'nav') { // arrow head
+    if (l.type === 'nav') {
       const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || 1;
       const ux = dx / d, uy = dy / d, ex = l.b.x - ux * (l.b.r + 2), ey = l.b.y - uy * (l.b.r + 2), s = 6 / Math.sqrt(k);
       ctx.setLineDash([]); ctx.fillStyle = TC.accent;
@@ -1008,83 +1134,166 @@ function draw() {
   ctx.setLineDash([]);
   // nodes
   for (const n of G.nodes) {
-    ctx.globalAlpha = lit(n) ? 1 : .18;
+    if (!shown(n)) continue;
+    let al = lit(n) ? 1 : .15;
+    if (G.color === 'recent' && !n.ghost) al *= Math.max(.18, 1 - (now - n.last) / (30 * 864e5));
+    ctx.globalAlpha = al;
     ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 6.2832);
-    if (n.ghost) { ctx.fillStyle = TC.bg; ctx.fill(); ctx.strokeStyle = TC.ghost; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]); }
-    else { ctx.fillStyle = n.lang === 'de' ? TC.accent : TC.accent2; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
-    if (n === sel) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 4 / k, 0, 6.2832); ctx.strokeStyle = TC.ink; ctx.lineWidth = 2 / k; ctx.stroke(); }
-  }
-  // labels
-  if (G.lbl) {
-    const fs = 12 / k;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    for (const n of G.nodes) {
-      const show = (sel && lit(n)) || (!sel && (k > .75 || n.w >= 3 || (n.ghost && k > 1.1)));
-      if (!show) continue;
-      ctx.globalAlpha = 1;
-      ctx.font = (n.ghost ? 'italic ' : (n === sel ? '600 ' : '')) + fs + 'px -apple-system,Segoe UI,Roboto,sans-serif';
-      const t = n.title.length > 28 ? n.title.slice(0, 26) + '…' : n.title;
-      ctx.lineWidth = 3 / k; ctx.strokeStyle = TC.bg; ctx.strokeText(t, n.x, n.y + n.r + 3 / k);
-      ctx.fillStyle = n.ghost ? TC.ghostink : TC.ink; ctx.fillText(t, n.x, n.y + n.r + 3 / k);
-    }
+    if (n.ghost) { ctx.fillStyle = TC.bg; ctx.fill(); ctx.strokeStyle = n.cl >= 0 && G.color === 'topic' ? pal(n.cl) : TC.ghost; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]); }
+    else { ctx.fillStyle = nodeColor(n); ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
+    ctx.globalAlpha = lit(n) ? 1 : .3;
+    if (n.key === curKey) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 6 / k, 0, 6.2832); ctx.strokeStyle = TC.accent; ctx.lineWidth = 2 / k; ctx.setLineDash([3 / k, 3 / k]); ctx.stroke(); ctx.setLineDash([]); }
+    if (n === sel) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 3.5 / k, 0, 6.2832); ctx.strokeStyle = TC.ink; ctx.lineWidth = 2 / k; ctx.stroke(); }
   }
   ctx.globalAlpha = 1;
+  // labels in screen space, most important first, no overlaps
+  if (!G.lbl) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const cand = [];
+  for (const n of G.nodes) {
+    if (!shown(n)) continue;
+    let p;
+    if (n === sel) p = 1e6;
+    else if (sel) { if (!sel.adj.has(n)) continue; p = 5e5 + n.w; }
+    else if (hc != null) { if (n.cl !== hc) continue; p = 3e5 + n.w; }
+    else p = (n.key === curKey ? 4e5 : 0) + (n.ghost ? n.c : 100 + n.w * 10);
+    if (!sel && hc == null && !G.focusSet) {
+      if (n.ghost && k < .9) continue;
+      if (k < .45 && n.w < 3 && n.key !== curKey) continue;
+    }
+    cand.push([p, n]);
+  }
+  cand.sort((a, b) => b[0] - a[0]);
+  const placed = [];
+  for (const [, n] of cand) {
+    const [sx, sy] = toScreen(n.x, n.y);
+    if (sx < -100 || sx > W + 100 || sy < -40 || sy > H + 40) continue;
+    ctx.font = (n.ghost ? 'italic ' : (n === sel || n.key === curKey ? '600 ' : '')) + '12px -apple-system,Segoe UI,Roboto,sans-serif';
+    const t = n.title.length > 30 ? n.title.slice(0, 28) + '…' : n.title;
+    const w = ctx.measureText(t).width, y = sy + n.r * k + 3;
+    const r = [sx - w / 2 - 2, y - 1, sx + w / 2 + 2, y + 15];
+    if (placed.some(q => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1])) continue;
+    placed.push(r);
+    ctx.lineWidth = 3; ctx.strokeStyle = TC.bg; ctx.strokeText(t, sx, y);
+    ctx.fillStyle = n.ghost ? TC.ghostink : TC.ink; ctx.fillText(t, sx, y);
+  }
 }
-function fit(anim) {
-  if (!G.nodes.length) return;
+function fitNodes(list, maxK) {
+  list = (list || []).filter(Boolean);
+  if (!list.length) return;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const n of G.nodes) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
+  for (const n of list) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
   const w = Math.max(80, x1 - x0), h = Math.max(80, y1 - y0);
-  const k = Math.min(2.2, Math.max(.15, Math.min(G.W / (w + 80), G.H / (h + 120))));
-  G.cam.k = k; G.cam.x = -(x0 + x1) / 2 * k; G.cam.y = -(y0 + y1) / 2 * k;
-  requestDraw();
+  const k = Math.min(maxK || 2.2, Math.max(.12, Math.min(G.W / (w + 90), G.H / (h + 130))));
+  flyTo(-(x0 + x1) / 2 * k, -(y0 + y1) / 2 * k, k);
 }
-function centerOn(n) { G.cam.x = -n.x * G.cam.k; G.cam.y = -n.y * G.cam.k + G.H * .15; requestDraw(); }
+function fit() { fitNodes(G.nodes.filter(shown)); }
+function centerOn(n, k) { k = k || Math.max(G.cam.k, 1); flyTo(-n.x * k, -n.y * k + G.H * .15, k); }
 function graphEnter() {
   sizeCanvas();
-  setupTimeline();
   if (G.dirty) { rebuild(); heat(.6); }
+  else renderGraphHeader(analyze(G.tMax));
   if (!G.fitted) {
-    // pre-settle when there are no stored positions yet
     for (let i = 0; i < 120 && G.alpha > .02; i++) tick();
-    fit(); G.fitted = true;
+    fitNodes(G.nodes); G.anim && (G.anim.d = 1); G.fitted = true;
   }
   if (G.focusKey && G.by.has(G.focusKey)) { const n = G.by.get(G.focusKey); select(n); centerOn(n); }
   G.focusKey = null;
-  loop(); requestDraw();
+  loop();
 }
 window.addEventListener('resize', () => { if (view === 'graph') { sizeCanvas(); requestDraw(); } });
 
-/* timeline */
-function setupTimeline() {
-  const ts = Object.values(db.nodes).map(n => n.first);
-  const tl = $('tl');
-  if (!ts.length) { tl.disabled = true; return; }
-  tl.disabled = false;
-  G.t0 = Math.min(...ts); G.t1 = Date.now();
-}
-$('tl').addEventListener('input', e => {
-  const v = +e.target.value;
-  if (v >= 1000) { G.tMax = Infinity; $('tlv').textContent = 'Alles'; }
-  else { G.tMax = G.t0 + (G.t1 - G.t0) * v / 1000; $('tlv').textContent = fmtDate(G.tMax); }
-  rebuild(); heat(.25); requestDraw();
+/* header buttons */
+$('gFit').onclick = () => { G.hiCl = null; closeSheet(); renderGraphHeader(analyze(G.tMax)); fit(); };
+$('gHere').onclick = () => {
+  const n = current && G.by.get(K(current.lang, current.title));
+  if (!n) { toast(current ? 'Aktueller Artikel ist gerade nicht im Graph sichtbar' : 'Noch kein Artikel geöffnet'); return; }
+  select(n); centerOn(n, 1.4);
+};
+$('gSearchBtn').onclick = () => {
+  const gs = $('gsearch'), on = !gs.classList.contains('on');
+  gs.classList.toggle('on', on); $('gres').innerHTML = ''; $('gq').value = '';
+  sizeCanvas(); requestDraw();
+  if (on) $('gq').focus();
+};
+$('gq').addEventListener('input', () => {
+  const q = $('gq').value.trim().toLowerCase(), r = $('gres'); r.innerHTML = '';
+  if (!q) return;
+  G.nodes.filter(n => n.title.toLowerCase().includes(q))
+    .sort((a, b) => (a.title.toLowerCase().startsWith(q) ? 0 : 1) - (b.title.toLowerCase().startsWith(q) ? 0 : 1) || b.w - a.w).slice(0, 8)
+    .forEach(n => {
+      const b = document.createElement('button'); b.type = 'button';
+      b.innerHTML = `${esc(n.title)}${n.ghost ? ' <small>Vorschlag</small>' : ''}`;
+      b.onclick = () => { $('gsearch').classList.remove('on'); $('gq').blur(); sizeCanvas(); G.focus = null; computeFocus(); select(n); centerOn(n, 1.4); };
+      r.appendChild(b);
+    });
+  if (!r.children.length) r.innerHTML = '<div class="gnone">Nicht im Graph</div>';
 });
+$('gFilter').onclick = () => {
+  const ts = Object.values(db.nodes).map(n => n.first);
+  G.t0 = ts.length ? Math.min(...ts) : Date.now(); G.t1 = Date.now();
+  const tv = G.tMax === Infinity ? 1000 : Math.round((G.tMax - G.t0) / Math.max(1, G.t1 - G.t0) * 1000);
+  const chip = (id, on, label) => `<button class="chip${on ? ' on' : ''}" data-t="${id}">${label}</button>`;
+  const pb = $('popbody');
+  pb.innerHTML = `<div class="pophead">Ansicht</div>
+    <div class="frow">${chip('ghost', G.ghost, 'Vorschläge')}${chip('sem', G.sem, 'Querverbindungen')}${chip('lbl', G.lbl, 'Labels')}</div>
+    <div class="flab">Farbe nach</div>
+    <div class="frow">${chip('c:topic', G.color === 'topic', 'Thema')}${chip('c:lang', G.color === 'lang', 'Sprache')}${chip('c:recent', G.color === 'recent', 'Zuletzt gelesen')}</div>
+    <div class="flab">Zeitreise</div>
+    <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
+    <div class="flab">Legende</div>
+    <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
+  $('pop').classList.add('on');
+  pb.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
+    const t = b.dataset.t;
+    if (t.startsWith('c:')) { G.color = t.slice(2); pb.querySelectorAll('[data-t^="c:"]').forEach(x => x.classList.toggle('on', x === b)); }
+    else { G[t] = !G[t]; b.classList.toggle('on', G[t]); if (t !== 'lbl') { rebuild(); heat(.3); } }
+    requestDraw();
+  });
+  const setT = v => {
+    if (v >= 1000) { G.tMax = Infinity; $('tlv').textContent = 'Alles'; }
+    else { G.tMax = G.t0 + (G.t1 - G.t0) * v / 1000; $('tlv').textContent = fmtDate(G.tMax); }
+    rebuild(); heat(.25);
+  };
+  $('tl').addEventListener('input', e => setT(+e.target.value));
+  $('play').onclick = () => {
+    $('pop').classList.remove('on');
+    let v = 0; clearInterval(G.play);
+    const lab = $('playlab'); lab.classList.add('on');
+    G.play = setInterval(() => {
+      v = Math.min(1000, v + 25); setT(v);
+      lab.textContent = v >= 1000 ? 'Heute' : fmtDate(G.tMax);
+      if (v >= 1000) { clearInterval(G.play); setTimeout(() => lab.classList.remove('on'), 1200); fit(); }
+    }, 130);
+  };
+};
 
-/* toggles */
-function tog(id, prop) { $(id).onclick = () => { G[prop] = !G[prop]; $(id).classList.toggle('on', G[prop]); if (prop !== 'lbl') { rebuild(); heat(.3); } requestDraw(); }; }
-tog('tGhost', 'ghost'); tog('tSem', 'sem'); tog('tLbl', 'lbl');
-$('tFit').onclick = () => fit();
-
-/* pointer: pan, pinch, tap */
-const ptrs = new Map(); let gest = null;
+/* pointer: pan, pinch, drag nodes, tap, double-tap */
+const ptrs = new Map(); let gest = null, lastTap = null;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+function hit(sx, sy) {
+  const [wx, wy] = toWorld(sx, sy);
+  let best = null, bd = Infinity;
+  for (const n of G.nodes) {
+    if (!shown(n)) continue;
+    const d = Math.hypot(n.x - wx, n.y - wy) - n.r;
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best && bd * G.cam.k < 16 ? best : null;
+}
 function startPan(p) { gest = { type: 'pan', sx: p.x, sy: p.y, cx: G.cam.x, cy: G.cam.y, moved: false }; }
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId);
+  G.anim = null;
   ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
-  if (ptrs.size === 1) startPan(ptrs.get(e.pointerId));
-  else if (ptrs.size === 2) {
+  if (ptrs.size === 1) {
+    const n = hit(e.offsetX, e.offsetY);
+    if (n) gest = { type: 'node', n, sx: e.offsetX, sy: e.offsetY, moved: false };
+    else startPan(ptrs.get(e.pointerId));
+  } else if (ptrs.size === 2) {
+    if (gest && gest.type === 'node') gest.n.fixed = false;
     const [a, b] = [...ptrs.values()], m = mid(a, b);
     gest = { type: 'pinch', d0: dist(a, b) || 1, k0: G.cam.k, w0: toWorld(m.x, m.y) };
   }
@@ -1097,6 +1306,9 @@ cv.addEventListener('pointermove', e => {
     const p = ptrs.get(e.pointerId), dx = p.x - gest.sx, dy = p.y - gest.sy;
     if (Math.hypot(dx, dy) > 6) gest.moved = true;
     if (gest.moved) { G.cam.x = gest.cx + dx; G.cam.y = gest.cy + dy; requestDraw(); }
+  } else if (gest.type === 'node' && ptrs.size === 1) {
+    if (Math.hypot(e.offsetX - gest.sx, e.offsetY - gest.sy) > 6) gest.moved = true;
+    if (gest.moved) { const [wx, wy] = toWorld(e.offsetX, e.offsetY); gest.n.x = wx; gest.n.y = wy; gest.n.fixed = true; G.alpha = Math.max(G.alpha, .12); loop(); }
   } else if (gest.type === 'pinch' && ptrs.size >= 2) {
     const [a, b] = [...ptrs.values()], m = mid(a, b);
     const k = Math.min(5, Math.max(.08, gest.k0 * dist(a, b) / gest.d0));
@@ -1109,49 +1321,60 @@ function endPtr(e) {
   if (!ptrs.has(e.pointerId)) return;
   const p = ptrs.get(e.pointerId);
   ptrs.delete(e.pointerId);
-  if (gest && gest.type === 'pan' && !gest.moved && ptrs.size === 0 && e.type === 'pointerup') tap(p.x, p.y);
+  if (gest && gest.type === 'node') { gest.n.fixed = false; if (gest.moved) heat(.15); }
+  if (gest && (gest.type === 'pan' || gest.type === 'node') && !gest.moved && ptrs.size === 0 && e.type === 'pointerup') tap(p.x, p.y, gest.type === 'node' ? gest.n : null);
   if (ptrs.size === 1) { startPan([...ptrs.values()][0]); gest.moved = true; }
   else if (ptrs.size === 0) gest = null;
 }
 cv.addEventListener('pointerup', endPtr);
 cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('wheel', e => {
-  e.preventDefault();
+  e.preventDefault(); G.anim = null;
   const w = toWorld(e.offsetX, e.offsetY);
   const k = Math.min(5, Math.max(.08, G.cam.k * Math.exp(-e.deltaY * .0015)));
   G.cam.k = k; G.cam.x = e.offsetX - G.W / 2 - w[0] * k; G.cam.y = e.offsetY - G.H / 2 - w[1] * k;
   requestDraw();
 }, { passive: false });
-function tap(sx, sy) {
-  const [wx, wy] = toWorld(sx, sy);
-  let best = null, bd = Infinity;
-  for (const n of G.nodes) {
-    const d = Math.hypot(n.x - wx, n.y - wy) - n.r;
-    if (d < bd) { bd = d; best = n; }
+function tap(sx, sy, n) {
+  const now = performance.now();
+  if (!n && lastTap && now - lastTap.t < 320 && Math.hypot(sx - lastTap.x, sy - lastTap.y) < 30) { // double tap = zoom in
+    lastTap = null;
+    const w = toWorld(sx, sy), k = Math.min(5, G.cam.k * 2);
+    flyTo(sx - G.W / 2 - w[0] * k, sy - G.H / 2 - w[1] * k, k);
+    return;
   }
-  if (best && bd * G.cam.k < 16) select(best); else closeSheet();
+  lastTap = { t: now, x: sx, y: sy };
+  if (n) select(n); else { closeSheet(); if (G.hiCl != null) { G.hiCl = null; renderGraphHeader(analyze(G.tMax)); } }
 }
 
 /* sheet */
 function select(n) {
   G.sel = n; requestDraw();
   const sh = $('sheet');
+  const cl = n.cl >= 0 ? G.clusters[n.cl] : null;
+  const clTag = cl ? `<span class="cltag"><i style="background:${pal(cl.id)}"></i>Thema „${esc(cl.name)}“</span>` : '';
   let html;
   if (n.ghost) {
     html = `<div class="st">${esc(n.title)}</div>
-      <div class="sm">Noch nicht gelesen · verlinkt von ${n.c} deiner Artikel</div>
-      <button class="btn" data-open>Lesen</button> <button class="btn sec" data-hide>Nicht mehr vorschlagen</button> <button class="btn sec" data-close>Schließen</button>`;
+      <div class="sm">Noch nicht gelesen · verlinkt von ${n.c} deiner Artikel ${clTag}</div>
+      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-prev>Vorschau</button><button class="btn sec" data-focus>Fokus</button><button class="btn sec" data-hide>Nicht vorschlagen</button></div>`;
   } else {
     const d = db.nodes[n.key];
     html = `<div class="st">${esc(n.title)}</div>
-      <div class="sm">${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)}${d.desc ? '<br>' + esc(d.desc) : ''}</div>
-      <button class="btn" data-open>Lesen</button> <button class="btn sec" data-close>Schließen</button>`;
+      <div class="sm">${d.desc ? esc(d.desc) + '<br>' : ''}${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)} ${clTag}</div>
+      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button></div>`;
   }
-  const nb = [...n.adj].sort((a, b) => (a.ghost - b.ghost) || a.title.localeCompare(b.title));
-  if (nb.length) html += `<div class="nb">${nb.map(m => `<button class="chip" data-k="${esc(m.key)}" style="${m.ghost ? 'border-style:dashed;color:#9a6524' : ''}">${esc(m.title)}</button>`).join('')}</div>`;
-  sh.innerHTML = html; sh.classList.add('on');
+  const nb = [...n.adj].sort((a, b) => (a.ghost - b.ghost) || b.w - a.w || a.title.localeCompare(b.title));
+  if (nb.length) html += `<div class="nbh">${nb.filter(m => !m.ghost).length} gelesene Nachbarn${nb.some(m => m.ghost) ? ', ' + nb.filter(m => m.ghost).length + ' Vorschläge' : ''}</div><div class="nb">${nb.map(m => `<button class="chip${m.ghost ? ' gh' : ''}" data-k="${esc(m.key)}">${esc(m.title)}</button>`).join('')}</div>`;
+  html += '<button class="shx" data-close aria-label="Schließen">✕</button>';
+  sh.innerHTML = html; sh.classList.add('on'); sh.scrollTop = 0;
   sh.querySelector('[data-open]').onclick = () => openTitle(n.lang, n.title, null);
   sh.querySelector('[data-close]').onclick = closeSheet;
+  const pv = sh.querySelector('[data-prev]'); if (pv) pv.onclick = () => showPreview(n.lang, n.title);
+  sh.querySelector('[data-focus]').onclick = () => {
+    G.focus = G.focus === n.key ? null : n.key; G.hiCl = null; computeFocus(); select(n);
+    if (G.focusSet) fitNodes([...G.focusSet], 2); else fit();
+  };
   const hb = sh.querySelector('[data-hide]');
   if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
   sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
