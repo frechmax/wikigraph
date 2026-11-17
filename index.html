@@ -585,7 +585,7 @@ function renderMini() {
     return `<text x="${Math.max(48, Math.min(W - 48, x))}" y="${y + dy}" text-anchor="middle" style="font:${cls === 'g' ? 'italic ' : ''}11px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(${cls === 'g' ? '--ghostink' : '--ink'})">${esc(t)}</text>`; };
   for (const x of nbs) svg += `<g class="n" data-k="${esc(x.k)}"><circle cx="${x.x}" cy="${x.y}" r="14" fill="transparent"/><circle cx="${x.x}" cy="${x.y}" r="${5 + Math.min(4, Math.sqrt(x.n.visits.length) * 1.5)}" style="fill:var(${x.n.lang === 'de' ? '--accent' : '--accent2'})"/>${label(x.x, x.y, x.c, tr(x.n.title, 15), 'n')}</g>`;
   for (const g of gh) svg += `<g class="n" data-k="${esc(g.key)}" data-g="1"><circle cx="${g.x}" cy="${g.y}" r="14" fill="transparent"/><circle cx="${g.x}" cy="${g.y}" r="5" style="fill:var(--bg);stroke:var(--ghost);stroke-width:1.5" stroke-dasharray="2.5 2"/>${label(g.x, g.y, g.c, tr(g.title, 15), 'g')}</g>`;
-  svg += `<circle cx="${cx}" cy="${cy}" r="10" style="fill:var(--ink)"/><text x="${cx}" y="${cy + 24}" text-anchor="middle" style="font:600 12px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(--ink)">${esc(tr(current.title, 26))}</text></svg>`;
+  svg += `<circle cx="${cx}" cy="${cy}" r="10" style="fill:var(--ink)"/></svg>`;
   box.insertAdjacentHTML('beforeend', svg);
   box.insertAdjacentHTML('beforeend', `<div class="mnote">${nbs.length ? nbs.length + (nbs.length === 1 ? ' gelesener Nachbar' : ' gelesene Nachbarn') : ''}${nbs.length && gh.length ? ' · ' : ''}${gh.length ? gh.length + ' Vorschläge (gestrichelt)' : ''}</div>`);
   box.querySelectorAll('g.n').forEach(g => g.onclick = () => {
