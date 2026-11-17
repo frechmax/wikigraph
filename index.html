@@ -48,6 +48,8 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .empty{color:var(--muted);text-align:center;padding:40px 20px}
 /* reader */
 .rbar{display:flex;align-items:center;gap:10px}
+#v-read>.bar{transition:transform .22s ease}
+#v-read>.bar.hide{transform:translateY(-100%)}
 .rbar .ttl{flex:1;min-width:0;font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .icobtn{border:0;background:none;padding:6px;border-radius:8px;display:flex}
 .icobtn svg{width:22px;height:22px}
@@ -376,6 +378,18 @@ function renderHome() {
 }
 
 /* ---------- reader ---------- */
+/* hide the reader bar while scrolling down, show it again on scroll up (like a mobile browser) */
+(() => {
+  const vr = $('v-read'), rb = vr.querySelector('.bar');
+  let lastY = 0;
+  vr.addEventListener('scroll', () => {
+    const y = vr.scrollTop, dy = y - lastY;
+    if (y < 80) { rb.classList.remove('hide'); lastY = y; return; }
+    if (Math.abs(dy) < 10) return;
+    rb.classList.toggle('hide', dy > 0);
+    lastY = y;
+  }, { passive: true });
+})();
 let rTok = 0;
 $('back').onclick = () => history.back();
 $('toGraph').onclick = () => { if (current) { G.focusKey = K(current.lang, current.title); } go('#graph'); };
@@ -388,6 +402,7 @@ async function openArticle(lang, title, from) {
   $('rtitle').textContent = title; $('rmeta').innerHTML = '';
   art.innerHTML = '<div class="loading">Lädt …</div>';
   $('v-read').scrollTop = 0;
+  $('v-read').querySelector('.bar').classList.remove('hide');
   let d;
   try {
     d = await api(lang, { action: 'parse', page: title, prop: 'text|links|properties|displaytitle', redirects: 1, disableeditsection: 1, disabletoc: 1 });
