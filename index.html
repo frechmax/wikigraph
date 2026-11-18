@@ -354,6 +354,8 @@ const IDENT = new Set([
   'Internationales Phonetisches Alphabet', 'International Phonetic Alphabet', 'Help:IPA', 'Mathematical Reviews', 'ZbMATH', 'ZbMATH Open', 'Zentralblatt MATH',
   'Hochschulbibliothekszentrum', 'Bibliotheksverbund Bayern', 'Karlsruher Virtueller Katalog', 'Systematik der Bibliothek'
 ]);
+const identMemo = new Map();
+const identCached = t => { let v = identMemo.get(t); if (v === undefined) { v = isIdent(t); identMemo.set(t, v); } return v; };
 const isIdent = t => IDENT.has(t) || /\((identifier|Identifikator)\)$/i.test(t) || /^(ISBN|ISSN|DOI|PMID|OCLC|ASIN)\b/.test(t);
 function load() {
   try { const r = localStorage.getItem(S_KEY); if (r) return Object.assign(blank(), JSON.parse(r)); } catch (e) {}
@@ -988,32 +990,33 @@ function analyze(tMax) {
 }
 function analyzeRaw(tMax) {
   const vis = Object.keys(db.nodes).filter(k => db.nodes[k].first <= tMax);
-  const visSet = new Set(vis);
+  const N = vis.length, idx = new Map(vis.map((k, i) => [k, i]));
   const hidden = new Set(db.hidden || []);
   const pairs = new Map(), links = [];
-  const pk = (a, b) => a < b ? a + '|' + b : b + '|' + a;
   for (const e of db.edges) {
-    if (e.ts > tMax || !visSet.has(e.f) || !visSet.has(e.t)) continue;
-    const id = pk(e.f, e.t);
-    const l = pairs.get(id);
-    if (l) { l.c++; if (l.type !== 'nav') l.type = 'nav'; }
+    if (e.ts > tMax) continue;
+    const i = idx.get(e.f), j = idx.get(e.t);
+    if (i === undefined || j === undefined || i === j) continue;
+    const id = i < j ? i * N + j : j * N + i, l = pairs.get(id);
+    if (l) l.c++;
     else { const nl = { s: e.f, t: e.t, type: 'nav', c: 1 }; pairs.set(id, nl); links.push(nl); }
   }
   const gc = new Map();
-  for (const a of vis) {
-    const n = db.nodes[a];
-    const wt = 1 / Math.log2((n.out || []).length + 2);   // Adamic-Adar: a link from a long article counts less
-    for (const o of (n.out || [])) {
-      if (isIdent(o)) continue;
-      const k = resolve(K(n.lang, o));
+  for (let ai = 0; ai < N; ai++) {
+    const a = vis[ai], n = db.nodes[a], out = n.out || [], pre = n.lang + ':';
+    const wt = 1 / Math.log2(out.length + 2);   // Adamic-Adar: a link from a long article counts less
+    for (const o of out) {
+      if (identCached(o)) continue;
+      let k = pre + o; const al = db.alias[k]; if (al) k = pre + al;
       if (k === a || hidden.has(k)) continue;
-      if (visSet.has(k)) {
-        const id = pk(a, k);
+      const j = idx.get(k);
+      if (j !== undefined) {
+        const id = ai < j ? ai * N + j : j * N + ai;
         if (!pairs.has(id)) { const nl = { s: a, t: k, type: 'sem', c: 1 }; pairs.set(id, nl); links.push(nl); }
       } else {
         let g = gc.get(k);
-        if (!g) { g = { key: k, title: k.slice(k.indexOf(':') + 1), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
-        if (!g.from.includes(a)) { g.c++; g.s += wt; g.from.push(a); g.fw.push(wt); }
+        if (!g) { g = { key: k, title: k.slice(pre.length), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
+        if (g.from[g.from.length - 1] !== a) { g.c++; g.s += wt; g.from.push(a); g.fw.push(wt); }
       }
     }
   }
@@ -1077,6 +1080,7 @@ function clearTemp() {
   const tmp = new Set(G.nodes.filter(n => n.temp));
   G.nodes = G.nodes.filter(n => !tmp.has(n));
   G.links = G.links.filter(l => !tmp.has(l.a) && !tmp.has(l.b));
+  if (G.phys) G.phys = G.phys.filter(l => !tmp.has(l.a) && !tmp.has(l.b));
   tmp.forEach(n => G.by.delete(n.key));
   G.nodes.forEach(n => tmp.forEach(t => n.adj.delete(t)));
 }
@@ -1096,7 +1100,7 @@ function addTemp(n) {
     const a = i / sug.length * 6.283, o = { key: x.k, title: x.o, lang: n.lang, ghost: true, temp: true, c: x.c, from: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).from : [n.key]), w: 0, cl: n.cl,
       x: n.x + Math.cos(a) * 70, y: n.y + Math.sin(a) * 70, vx: 0, vy: 0, r: 4 + Math.min(6, x.c * 1.2), adj: new Set([n]) };
     G.nodes.push(o); G.by.set(x.k, o); n.adj.add(o);
-    G.links.push({ s: n.key, t: x.k, type: 'ghost', a: n, b: o });
+    const tl = { s: n.key, t: x.k, type: 'ghost', a: n, b: o }; G.links.push(tl); if (G.phys) G.phys.push(tl);
   });
   if (sug.length) heat(.15);
 }
@@ -1146,6 +1150,8 @@ function rebuild() {
       for (const f of g.from) links.push({ s: f, t: g.key, type: 'ghost', a: by.get(f), b: o });
     }
   }
+  // physics: all clicked + suggestion links, but at most 6 'linked' springs per article (dense topics would otherwise freeze the layout)
+  { const cnt = new Map(); G.phys = links.filter(l => { if (l.type !== 'sem') return true; const ca = cnt.get(l.a) || 0, cb = cnt.get(l.b) || 0; if (ca >= 6 || cb >= 6) return false; cnt.set(l.a, ca + 1); cnt.set(l.b, cb + 1); return true; }); }
   G.nodes = nodes; G.links = links; G.by = by; G.gc = an.gc; G.ghostMax = G.ghost ? Math.min(ghostLimit(an.vis.length), an.ghosts.length) : 0; G.ghostAvail = an.ghosts.length;
   nodes.forEach(n => n.adj = new Set());
   links.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
@@ -1223,7 +1229,7 @@ function tick() {
       p.vx -= dx * f; p.vy -= dy * f; q.vx += dx * f; q.vy += dy * f;
     }
   }
-  for (const l of G.links) {
+  for (const l of (G.phys || G.links)) {
     const p = l.a, q = l.b;
     const L = l.type === 'nav' ? 70 : l.type === 'sem' ? 120 : 90;
     const s = l.type === 'nav' ? .08 : l.type === 'sem' ? .025 : .03;
