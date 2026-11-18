@@ -924,6 +924,7 @@ function analyze(tMax) {
   const gc = new Map();
   for (const a of vis) {
     const n = db.nodes[a];
+    const wt = 1 / Math.log2((n.out || []).length + 2);   // Adamic-Adar: a link from a long article counts less
     for (const o of (n.out || [])) {
       if (isIdent(o)) continue;
       const k = resolve(K(n.lang, o));
@@ -933,12 +934,12 @@ function analyze(tMax) {
         if (!pairs.has(id)) { const nl = { s: a, t: k, type: 'sem', c: 1 }; pairs.set(id, nl); links.push(nl); }
       } else {
         let g = gc.get(k);
-        if (!g) { g = { key: k, title: k.slice(k.indexOf(':') + 1), lang: n.lang, c: 0, from: [] }; gc.set(k, g); }
-        if (!g.from.includes(a)) { g.c++; g.from.push(a); }
+        if (!g) { g = { key: k, title: k.slice(k.indexOf(':') + 1), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
+        if (!g.from.includes(a)) { g.c++; g.s += wt; g.from.push(a); g.fw.push(wt); }
       }
     }
   }
-  const ghosts = [...gc.values()].filter(g => g.c >= 2).sort((x, y) => y.c - x.c || x.title.localeCompare(y.title));
+  const ghosts = [...gc.values()].filter(g => g.c >= 2).sort((x, y) => y.s - x.s || x.title.localeCompare(y.title));
   return { vis, links, ghosts, gc };
 }
 
@@ -978,14 +979,14 @@ function computeClusters(nodes, links) {
   for (const n of vis) { const l = lab.get(n); if (!groups.has(l)) groups.set(l, []); groups.get(l).push(n); }
   const cl = [...groups.values()].sort((a, b) => b.length - a.length || b.reduce((s, n) => s + n.w, 0) - a.reduce((s, n) => s + n.w, 0));
   G.clusters = [];
-  nodes.forEach(n => n.cl = -1);
+  nodes.forEach(n => { if (!n.ghost) n.cl = -1; });
   cl.forEach(members => {
     if (members.length < 2 || G.clusters.length >= 8) return;
     const id = G.clusters.length, top = members.slice().sort((a, b) => b.w - a.w)[0];
     members.forEach(n => n.cl = id);
     G.clusters.push({ id, name: top.title, members });
   });
-  for (const n of nodes) if (n.ghost) { // ghosts inherit the cluster most of their sources belong to
+  for (const n of nodes) if (n.ghost && n.cl == null) { // ghosts inherit the cluster most of their sources belong to
     const c = new Map(); n.from.forEach(f => { const m = G.by.get(f); if (m && m.cl >= 0) c.set(m.cl, (c.get(m.cl) || 0) + 1); });
     let b = -1, bw = 0; for (const [k, w] of c) if (w > bw) { b = k; bw = w; } n.cl = b;
   }
@@ -1007,7 +1008,7 @@ function localSug(n) {
   return (d.out || []).map((o, i) => ({ o, i, k: resolve(K(n.lang, o)) }))
     .filter(x => !isIdent(x.o) && !db.nodes[x.k] && !hidden.has(x.k))
     .map(x => ({ ...x, c: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).c : 1) }))
-    .sort((a, b) => b.c - a.c || a.i - b.i).slice(0, 8);
+    .map(x => ({ ...x, s: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).s : 0) })).sort((a, b) => b.c - a.c || b.s - a.s || a.i - b.i).slice(0, 8);
 }
 function addTemp(n) {
   clearTemp();
@@ -1043,11 +1044,26 @@ function rebuild() {
     nodes.push(o); by.set(k, o);
   }
   const links = an.links.filter(l => G.sem || l.type === 'nav').map(l => ({ ...l, a: by.get(l.s), b: by.get(l.t) }));
+  // topics are computed on all connections (independent of the display toggles)
+  computeClusters(nodes.slice(), an.links.map(l => ({ type: l.type, a: by.get(l.s), b: by.get(l.t) })));
   if (G.ghost) {
     const max = ghostLimit(an.vis.length);
-    for (const g of an.ghosts.slice(0, max)) {
+    // each suggestion belongs to the topic that contributes most of its (weighted) links
+    const groups = new Map();
+    for (const g of an.ghosts) {
+      const sc = new Map();
+      g.from.forEach((f, i) => { const m = by.get(f); const c = m ? m.cl : -1; sc.set(c, (sc.get(c) || 0) + g.fw[i]); });
+      let cl = -1, bw = -1; for (const [c, w] of sc) if (w > bw || (w === bw && c > cl)) { cl = c; bw = w; }
+      g.cl = cl;
+      if (!groups.has(cl)) groups.set(cl, []);
+      groups.get(cl).push(g);           // already sorted by score
+    }
+    // fair share: pick round-robin across topics, strongest topic first in each round
+    const qs = [...groups.values()].sort((a, b) => b[0].s - a[0].s), picked = [];
+    while (picked.length < max && qs.some(q => q.length)) for (const q of qs) { if (picked.length >= max) break; if (q.length) picked.push(q.shift()); }
+    for (const g of picked) {
       const p = place(g.key, g.from[0]);
-      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
+      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cl: g.cl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
       nodes.push(o); by.set(g.key, o);
       for (const f of g.from) links.push({ s: f, t: g.key, type: 'ghost', a: by.get(f), b: o });
     }
@@ -1055,7 +1071,6 @@ function rebuild() {
   G.nodes = nodes; G.links = links; G.by = by; G.gc = an.gc; G.ghostMax = G.ghost ? Math.min(ghostLimit(an.vis.length), an.ghosts.length) : 0; G.ghostAvail = an.ghosts.length;
   nodes.forEach(n => n.adj = new Set());
   links.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
-  computeClusters(nodes, links);
   if (G.hiCl != null && !G.clusters[G.hiCl]) G.hiCl = null;
   if (G.sel && !by.has(G.sel.key)) closeSheet(); else if (G.sel) G.sel = by.get(G.sel.key);
   if (G.focus && !by.has(G.focus)) G.focus = null;
@@ -1308,7 +1323,7 @@ $('gFilter').onclick = () => {
     <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
     <div class="flab">Legende</div>
     <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div></div>
-    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden die ${G.ghostMax || 0} mit den meisten solchen Links (einstellbar oben); je mehr, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
+    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben), reihum fair verteilt auf deine Themen, damit kein stark vernetztes Thema alles belegt. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
   $('pop').classList.add('on');
   const gnLabel = () => { $('gnv').textContent = (G.ghostMax || 0) + ' von ' + (G.ghostAvail || 0); };
   gnLabel();
