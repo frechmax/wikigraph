@@ -24,10 +24,12 @@ jobs:
           python-version: '3.12'
       - name: Build tables
         env:
-          LANGS: de
+          LANGS: de en
           TOPK: '10'
           MIN_N: '15'
-        run: python scripts/clickstream.py
+          TOPK_EN: '8'
+          MIN_N_EN: '25'
+        run: /usr/bin/time -v python scripts/clickstream.py 2>&1 | grep -v '^\s*$' | tail -40
       - name: Publish to branch clickstream
         run: |
           cd out

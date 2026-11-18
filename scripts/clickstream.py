@@ -43,11 +43,18 @@ def latest_month(lang):
 
 
 def build(lang, stream, month):
+    topk = int(os.environ.get('TOPK_' + lang.upper(), TOPK))
+    min_n = int(os.environ.get('MIN_N_' + lang.upper(), MIN_N))
+    rows_count = 0
     rows_link = {}   # src -> list of (n, tgt) for type == link
     rows_any = {}    # src -> same, any article->article pair (fallback if the dump has no 'link' type)
     totals_link, totals_any = {}, {}
     seen_link = False
+    track_any = True
     for raw in stream:
+        rows_count += 1
+        if track_any and seen_link and rows_count > 2_000_000:   # dump has the link type: the fallback is not needed
+            track_any = False; rows_any.clear(); totals_any.clear()
         parts = raw.decode('utf-8', 'replace').rstrip('\n').split('\t')
         if len(parts) < 4:
             continue
@@ -59,21 +66,21 @@ def build(lang, stream, month):
         except ValueError:
             continue
         src, tgt = prev.replace('_', ' '), curr.replace('_', ' ')
-        for rows, totals, ok in ((rows_link, totals_link, typ == 'link'), (rows_any, totals_any, True)):
+        for rows, totals, ok in ((rows_link, totals_link, typ == 'link'), (rows_any, totals_any, track_any)):
             if not ok:
                 continue
             totals[src] = totals.get(src, 0) + n
-            if n < MIN_N:
+            if n < min_n:
                 continue
             h = rows.setdefault(src, [])
-            if len(h) < TOPK:
+            if len(h) < topk:
                 heapq.heappush(h, (n, tgt))
             elif n > h[0][0]:
                 heapq.heapreplace(h, (n, tgt))
         if typ == 'link':
             seen_link = True
     rows, totals = (rows_link, totals_link) if seen_link else (rows_any, totals_any)
-    print(f'{lang}: {len(rows)} source articles, link type present: {seen_link}', file=sys.stderr)
+    print(f'{lang}: {rows_count} rows, {len(rows)} source articles, link type present: {seen_link}', file=sys.stderr)
     shards = {}
     for src, h in rows.items():
         entry = [totals[src]]
@@ -85,7 +92,7 @@ def build(lang, stream, month):
     for sh, data in shards.items():
         with open(os.path.join(d, sh + '.json'), 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
-    return {'month': month, 'sources': len(rows), 'link_type': seen_link}
+    return {'month': month, 'sources': len(rows), 'rows': rows_count, 'link_type': seen_link, 'topk': topk, 'min_n': min_n}
 
 
 def main():
