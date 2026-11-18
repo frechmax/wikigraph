@@ -417,6 +417,7 @@ function show(v) {
   if (v === 'read' && was !== 'read') { $('v-read').scrollTop = readY; }
 }
 function route() {
+  if (typeof hideSpots === 'function') hideSpots();
   const h = location.hash.slice(1);
   if (h.startsWith('a/')) {
     const [, lang, ...rest] = h.split('/');
@@ -872,7 +873,7 @@ $('pop').onclick = e => {
   if (a && a.dataset.anchor) { e.preventDefault(); return; }
   if (!e.target.closest('#popbody') || e.target.closest('.popclose')) $('pop').classList.remove('on');
 };
-window.addEventListener('hashchange', () => { $('pop').classList.remove('on'); $('lb').classList.remove('on'); hideSpots(); });
+window.addEventListener('hashchange', () => { $('pop').classList.remove('on'); $('lb').classList.remove('on'); });
 /* jump to the places in the article where a given article is linked */
 let HL = null;
 function showLinkSpots(key) {
