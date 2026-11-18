@@ -28,7 +28,7 @@ jobs:
           TOPK: '10'
           MIN_N: '15'
           TOPK_EN: '8'
-          MIN_N_EN: '25'
+          MIN_N_EN: '10'
         run: /usr/bin/time -v python scripts/clickstream.py 2>&1 | grep -v '^\s*$' | tail -40
       - name: Publish to branch clickstream
         run: |
