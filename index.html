@@ -636,7 +636,9 @@ $('tocBtn').onclick = () => {
   pb.querySelector('[data-theme]').onclick = () => { setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); close(); };
 };
 /* mini graph below the article: how this article hangs together with what you've read */
-function renderMini() {
+let miniT;
+function renderMini() { clearTimeout(miniT); $('mini').innerHTML = ''; miniT = setTimeout(renderMiniNow, 120); }
+function renderMiniNow() {
   const box = $('mini'); box.innerHTML = '';
   if (!current) return;
   const key = K(current.lang, current.title);
@@ -705,7 +707,7 @@ async function learnRedirects(lang, t) {
     }
     const n = db.nodes[K(lang, t)]; if (n) n.rr = 1;
     save();
-    if (changed) { G.dirty = true; if (view === 'graph') { rebuild(); heat(.2); } }
+    if (changed) { aliasRev++; G.dirty = true; if (view === 'graph') { rebuild(); heat(.2); } }
   } catch (e) {}
 }
 /* backfill for articles read before this existed: one every 1.5 s */
@@ -769,8 +771,8 @@ async function openArticle(lang, title, from, restore) {
   const p = d.parse, t = p.title;
   current = { lang, title: t };
   // redirect bookkeeping
-  if (t !== title) db.alias[K(lang, title)] = t;
-  (p.redirects || []).forEach(r => { if (r.from && r.to) db.alias[K(lang, r.from)] = r.to; });
+  if (t !== title) { db.alias[K(lang, title)] = t; aliasRev++; }
+  (p.redirects || []).forEach(r => { if (r.from && r.to) { db.alias[K(lang, r.from)] = r.to; aliasRev++; } });
   if (t !== title) history.replaceState(null, '', artHash(lang, t));
 
   const props = Array.isArray(p.properties) ? Object.fromEntries(p.properties.map(x => [x.name, x['*'] || x.value])) : (p.properties || {});
@@ -982,7 +984,17 @@ $('article').addEventListener('click', e => {
 });
 
 /* ---------- graph analysis ---------- */
-let anMemo = null;
+let anMemo = null, aliasRev = 0;
+/* outlinks resolved to keys (redirects applied, identifiers dropped), cached per article until redirects change */
+const outCache = new Map();
+function resolvedOut(key, n) {
+  const c = outCache.get(key), out = n.out || [];
+  if (c && c.rev === aliasRev && c.src === out) return c.arr;
+  const pre = n.lang + ':', arr = [];
+  for (const o of out) { if (identCached(o)) continue; const al = db.alias[pre + o]; arr.push(pre + (al || o)); }
+  outCache.set(key, { rev: aliasRev, src: out, arr });
+  return arr;
+}
 function analyze(tMax) {
   const mk = dbRev + '|' + tMax;
   if (anMemo && anMemo.k === mk) return anMemo.r;
@@ -1003,11 +1015,9 @@ function analyzeRaw(tMax) {
   }
   const gc = new Map();
   for (let ai = 0; ai < N; ai++) {
-    const a = vis[ai], n = db.nodes[a], out = n.out || [], pre = n.lang + ':';
-    const wt = 1 / Math.log2(out.length + 2);   // Adamic-Adar: a link from a long article counts less
-    for (const o of out) {
-      if (identCached(o)) continue;
-      let k = pre + o; const al = db.alias[k]; if (al) k = pre + al;
+    const a = vis[ai], n = db.nodes[a], pre = n.lang + ':';
+    const wt = 1 / Math.log2((n.out || []).length + 2);   // Adamic-Adar: a link from a long article counts less
+    for (const k of resolvedOut(a, n)) {
       if (k === a || hidden.has(k)) continue;
       const j = idx.get(k);
       if (j !== undefined) {
@@ -1651,7 +1661,7 @@ $('file').onchange = async e => {
     const seen = new Set(db.edges.map(x => x.f + '|' + x.t + '|' + x.ts));
     for (const x of d.edges || []) if (!seen.has(x.f + '|' + x.t + '|' + x.ts)) db.edges.push(x);
     db.edges.sort((a, b) => a.ts - b.ts);
-    Object.assign(db.alias, d.alias || {});
+    Object.assign(db.alias, d.alias || {}); aliasRev++;
     db.hidden = [...new Set([...(db.hidden || []), ...(d.hidden || [])])];
     for (const k in d.pos || {}) if (!db.pos[k]) db.pos[k] = d.pos[k];
     save(); savePositions(); G.dirty = true; G.fitted = false; renderMore(); toast('Import erfolgreich');
