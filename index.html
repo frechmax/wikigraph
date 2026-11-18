@@ -713,6 +713,13 @@ function renderMini() { clearTimeout(miniT); $('mini').innerHTML = ''; miniT = s
   box.addEventListener('click', e => { if (fired) { fired = false; e.preventDefault(); e.stopPropagation(); } }, true);
   box.addEventListener('contextmenu', e => { if (target(e)) e.preventDefault(); });
 })();
+const simCache = new Map();
+function similarTo(lang, title) {
+  const k = K(lang, title);
+  if (!simCache.has(k)) simCache.set(k, api(lang, { action: 'query', list: 'search', srsearch: 'morelike:' + title, srnamespace: 0, srlimit: 6, srprop: '' })
+    .then(d => ((d.query && d.query.search) || []).map(x => x.title).filter(t => t !== title)).catch(() => { simCache.delete(k); return null; }));
+  return simCache.get(k);
+}
 function renderMiniNow() {
   const box = $('mini'); box.innerHTML = '';
   if (!current) return;
@@ -731,7 +738,20 @@ function renderMiniNow() {
     const top = cur.cs.l.filter(([tg]) => !identCached(tg)).slice(0, 6);
     box.innerHTML = `<div class="mh"><b>Als Nächstes lesen andere</b></div><div class="nextl">${top.map(([tg, c]) => { const k = resolve(K(current.lang, tg)), read = !!db.nodes[k]; return `<button type="button" data-nt="${esc(tg)}"><span>${read ? '● ' : ''}${esc(tg)}</span><i style="width:${Math.max(4, Math.round(c / cur.cs.t * 100))}%"></i><small>${Math.round(c / cur.cs.t * 100) || '<1'} %</small></button>`; }).join('')}</div><div class="mnote">Anteil der Wikipedia-Leser dieses Artikels, die dorthin weiterklicken (Wikipedia Clickstream ${esc(cur.cs.m)}). ● = schon gelesen</div>`;
     box.querySelectorAll('[data-nt]').forEach(b => b.onclick = () => openTitle(current.lang, b.dataset.nt, current));
-  } else box.innerHTML = '';
+  } else {
+    box.innerHTML = '';
+    // no clickstream for this article (too few readers, or language without data): show textually similar articles instead
+    const noCs = cur && ((cur.cs && (!cur.cs.t || !cur.cs.l.length)) || (!cur.cs && csMetaV && !(csMetaV.langs || {})[current.lang]));
+    if (noCs) {
+      const slot = document.createElement('div'); box.appendChild(slot);
+      const lang = current.lang, title = current.title;
+      similarTo(lang, title).then(list => {
+        if (!list || !list.length || !current || current.title !== title) return;
+        slot.innerHTML = `<div class="mh"><b>Ähnliche Artikel</b></div><div class="nextl">${list.map(t => `<button type="button" data-nt="${esc(t)}"><span>${db.nodes[resolve(K(lang, t))] ? '● ' : ''}${esc(t)}</span></button>`).join('')}</div><div class="mnote">${cur.cs ? 'Zu diesem Artikel gibt es keine Klickdaten: Wikipedia veröffentlicht nur Wege, die mindestens 10-mal im Monat geklickt werden. ' : 'Für diese Sprache gibt es keine Klickdaten. '}Stattdessen inhaltlich ähnliche Artikel (Wikipedia-Suche „morelike“). ● = schon gelesen</div>`;
+        slot.querySelectorAll('[data-nt]').forEach(b => b.onclick = () => openTitle(lang, b.dataset.nt, current));
+      });
+    }
+  }
   box.insertAdjacentHTML('beforeend', `<div class="mh"><b>Im Graph</b><button type="button" id="miniAll">Ganzer Graph ›</button></div>`);
   $('miniAll').onclick = () => { G.focusKey = key; go('#graph'); };
   if (!nbs.length && !gh.length) { box.insertAdjacentHTML('beforeend', '<div class="mnote">Noch keine Verbindung zu anderen Artikeln, die du gelesen hast.</div>'); return; }
@@ -800,7 +820,8 @@ setTimeout(function backfill() {
 /* ---------- clickstream: what readers of an article click next (monthly Wikipedia data, prepared by the repo's GitHub Action) ---------- */
 const CS_BASE = 'https://raw.githubusercontent.com/frechmax/wikigraph/clickstream/';
 let csMetaP = null; const csShards = new Map();
-function csMeta() { if (!csMetaP) csMetaP = fetch(CS_BASE + 'meta.json').then(r => r.ok ? r.json() : null).catch(() => { csMetaP = null; return null; }); return csMetaP; }
+let csMetaV = null;
+function csMeta() { if (!csMetaP) csMetaP = fetch(CS_BASE + 'meta.json').then(r => r.ok ? r.json() : null).then(m => (csMetaV = m)).catch(() => { csMetaP = null; return null; }); return csMetaP; }
 function fnv1a(str) { let h = 0x811c9dc5; for (const b of new TextEncoder().encode(str)) { h ^= b; h = Math.imul(h, 0x01000193) >>> 0; } return h >>> 0; }
 async function loadCS(lang, title) {
   const m = await csMeta(); if (!m || !m.langs || !m.langs[lang]) return null;
