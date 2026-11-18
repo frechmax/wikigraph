@@ -277,6 +277,11 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 .wdl{margin-top:6px}
 .wdl button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:7px 0;font-size:14px;color:var(--ink)}
 .wdl span{color:var(--accent2)}
+.nextl{margin:8px 0 18px}
+.nextl button{position:relative;display:flex;align-items:center;width:100%;border:0;background:none;padding:8px 2px;font-size:15px;color:var(--ink);text-align:left;border-bottom:1px solid var(--line);overflow:hidden}
+.nextl span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative;z-index:1}
+.nextl small{color:var(--muted);flex:none;margin-left:8px;position:relative;z-index:1}
+.nextl i{position:absolute;left:0;top:4px;bottom:4px;background:var(--badgebg);border-radius:4px;z-index:0}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -701,7 +706,13 @@ function renderMiniNow() {
   const nbs = [...nb.entries()].map(([k, type]) => ({ k, type, n: db.nodes[k] })).filter(x => x.n)
     .sort((a, b) => (a.type === 'nav' ? 0 : 1) - (b.type === 'nav' ? 0 : 1) || b.n.visits.length - a.n.visits.length).slice(0, 10);
   const gh = an.ghosts.filter(g => g.from.includes(key)).slice(0, 6);
-  box.innerHTML = `<div class="mh"><b>Im Graph</b><button type="button" id="miniAll">Ganzer Graph ›</button></div>`;
+  const cur = db.nodes[key];
+  if (cur && cur.cs && cur.cs.t && cur.cs.l.length) {
+    const top = cur.cs.l.filter(([tg]) => !identCached(tg)).slice(0, 6);
+    box.innerHTML = `<div class="mh"><b>Als Nächstes lesen andere</b></div><div class="nextl">${top.map(([tg, c]) => { const k = resolve(K(current.lang, tg)), read = !!db.nodes[k]; return `<button type="button" data-nt="${esc(tg)}"><span>${read ? '● ' : ''}${esc(tg)}</span><i style="width:${Math.max(4, Math.round(c / cur.cs.t * 100))}%"></i><small>${Math.round(c / cur.cs.t * 100) || '<1'} %</small></button>`; }).join('')}</div><div class="mnote">Anteil der Wikipedia-Leser dieses Artikels, die dorthin weiterklicken (Wikipedia Clickstream ${esc(cur.cs.m)}). ● = schon gelesen</div>`;
+    box.querySelectorAll('[data-nt]').forEach(b => b.onclick = () => openTitle(current.lang, b.dataset.nt, current));
+  } else box.innerHTML = '';
+  box.insertAdjacentHTML('beforeend', `<div class="mh"><b>Im Graph</b><button type="button" id="miniAll">Ganzer Graph ›</button></div>`);
   $('miniAll').onclick = () => { G.focusKey = key; go('#graph'); };
   if (!nbs.length && !gh.length) { box.insertAdjacentHTML('beforeend', '<div class="mnote">Noch keine Verbindung zu anderen Artikeln, die du gelesen hast.</div>'); return; }
   const W = 360, H = 300, cx = W / 2, cy = H / 2;
@@ -766,6 +777,39 @@ setTimeout(function backfill() {
   if (!n || !navigator.onLine) return;
   learnRedirects(n.lang, n.title).finally(() => setTimeout(backfill, 1500));
 }, 3000);
+/* ---------- clickstream: what readers of an article click next (monthly Wikipedia data, prepared by the repo's GitHub Action) ---------- */
+const CS_BASE = 'https://raw.githubusercontent.com/frechmax/wikigraph/clickstream/';
+let csMetaP = null; const csShards = new Map();
+function csMeta() { if (!csMetaP) csMetaP = fetch(CS_BASE + 'meta.json').then(r => r.ok ? r.json() : null).catch(() => { csMetaP = null; return null; }); return csMetaP; }
+function fnv1a(str) { let h = 0x811c9dc5; for (const b of new TextEncoder().encode(str)) { h ^= b; h = Math.imul(h, 0x01000193) >>> 0; } return h >>> 0; }
+async function loadCS(lang, title) {
+  const m = await csMeta(); if (!m || !m.langs || !m.langs[lang]) return null;
+  const sh = (fnv1a(title) % m.shards).toString(16).padStart(3, '0'), url = `${CS_BASE}${lang}/${sh}.json`;
+  if (!csShards.has(url)) csShards.set(url, fetch(url).then(r => r.ok ? r.json() : {}).catch(() => { csShards.delete(url); return null; }));
+  const d = await csShards.get(url); if (d === null) return null;
+  const e = d[title], month = m.langs[lang].month;
+  if (!e) return { m: month, t: 0, l: [] };
+  const l = []; for (let i = 1; i < e.length; i += 2) l.push([e[i], e[i + 1]]);
+  return { m: month, t: e[0], l };
+}
+async function attachCS(key) {
+  const n = db.nodes[key]; if (!n) return;
+  const cs = await loadCS(n.lang, n.title); if (!cs) return;
+  n.cs = cs; save(); G.dirty = true;
+  if (current && K(current.lang, current.title) === key) renderMini();
+}
+/* fill in clickstream for articles read earlier, or when a new month is out */
+setTimeout(async function csBackfill() {
+  const m = await csMeta(); if (!m) return;
+  const todo = Object.entries(db.nodes).filter(([, n]) => m.langs[n.lang] && (!n.cs || n.cs.m !== m.langs[n.lang].month)).map(([k]) => k);
+  for (const k of todo) { await attachCS(k); await new Promise(r => setTimeout(r, 250)); }
+  if (todo.length && view === 'graph') { rebuild(); heat(.2); }
+}, 4000);
+function csP(n, key) { // share of readers of article n who click on to key
+  if (!n.cs || !n.cs.t) return 0;
+  for (const [tg, c] of n.cs.l) if (resolve(K(n.lang, tg)) === key) return c / n.cs.t;
+  return 0;
+}
 function recordVisit(lang, t, from, out, props) {
   const key = K(lang, t), now = Date.now();
   let n = db.nodes[key];
@@ -773,7 +817,7 @@ function recordVisit(lang, t, from, out, props) {
   const lastV = n.visits[n.visits.length - 1] || 0;
   if (now - lastV > 5 * 60e3) n.visits.push(now);
   n.last = now;
-  if (out) { n.out = out.slice(0, 1200); learnRedirects(lang, t); }
+  if (out) { n.out = out.slice(0, 1200); learnRedirects(lang, t); attachCS(K(lang, t)); }
   if (props && props.wikibase_item) n.qid = props.wikibase_item;
   if (props && props['wikibase-shortdesc']) n.desc = props['wikibase-shortdesc'];
   if (from) {
@@ -1091,8 +1135,24 @@ function analyzeRaw(tMax) {
       }
     }
   }
+  // clickstream: probability that readers of your articles click on to an unread article
+  for (let ai = 0; ai < N; ai++) {
+    const a = vis[ai], n = db.nodes[a];
+    if (!n.cs || !n.cs.t) continue;
+    const pre = n.lang + ':';
+    for (const [tg, c] of n.cs.l) {
+      const k = resolve(pre + tg);
+      if (k === a || idx.has(k) || hidden.has(k) || identCached(tg)) continue;
+      let g = gc.get(k);
+      if (!g) { g = { key: k, title: k.slice(pre.length), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
+      const p = c / n.cs.t;
+      g.cp = (g.cp || 0) + p;
+      if (!g.from.includes(a)) { g.c++; g.from.push(a); g.fw.push(0); }
+    }
+  }
+  for (const g of gc.values()) if (g.cp) g.s += 3 * g.cp;
   for (const [id, w] of wdl) { const l = pairs.get(id); if (l) { l.wd = w.ls; if (l.type === 'sem') l.type = 'wd'; } else { const nl = { s: w.s, t: w.t, type: 'wd', c: 1, wd: w.ls }; pairs.set(id, nl); links.push(nl); } }
-  const ghosts = [...gc.values()].filter(g => g.c >= 2 || g.hl).sort((x, y) => y.s - x.s || x.title.localeCompare(y.title));
+  const ghosts = [...gc.values()].filter(g => g.c >= 2 || g.hl || (g.cp || 0) >= .05).sort((x, y) => y.s - x.s || x.title.localeCompare(y.title));
   return { vis, links, ghosts, gc };
 }
 
@@ -1162,7 +1222,9 @@ function localSug(n) {
   return (d.out || []).map((o, i) => ({ o, i, k: resolve(K(n.lang, o)) }))
     .filter(x => !isIdent(x.o) && !db.nodes[x.k] && !hidden.has(x.k))
     .map(x => ({ ...x, c: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).c : 1) }))
-    .map(x => ({ ...x, s: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).s : 0) })).sort((a, b) => b.c - a.c || b.s - a.s || a.i - b.i).slice(0, 8);
+    .map(x => ({ ...x, s: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).s : 0), p: csP(d, x.k) }))
+    .concat((d.cs && d.cs.t ? d.cs.l : []).map(([tg]) => ({ o: tg, i: 9999, k: resolve(K(n.lang, tg)) })).filter(x => !(d.out || []).some(o => resolve(K(n.lang, o)) === x.k) && !db.nodes[x.k] && !hidden.has(x.k) && x.k !== n.key && !isIdent(x.o)).map(x => ({ ...x, c: 1, s: 0, p: csP(d, x.k) })))
+    .sort((a, b) => b.p - a.p || b.c - a.c || b.s - a.s || a.i - b.i).slice(0, 8);
 }
 function addTemp(n) {
   clearTemp();
@@ -1223,7 +1285,7 @@ function rebuild() {
     while (picked.length < max && qs.some(q => q.length)) for (const q of qs) { if (picked.length >= max) break; if (q.length) picked.push(q.shift()); }
     for (const g of picked) {
       const p = place(g.key, g.from[0]);
-      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cl: g.cl, bridge: g.bridge, hl: g.hl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
+      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cp: g.cp || 0, cl: g.cl, bridge: g.bridge, hl: g.hl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
       nodes.push(o); by.set(g.key, o);
       for (const f of g.from) links.push({ s: f, t: g.key, type: 'ghost', a: by.get(f), b: o });
     }
@@ -1530,7 +1592,7 @@ $('gFilter').onclick = () => {
     <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
     <div class="flab">Legende</div>
     <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border-color:var(--accent2)"></i>Wikidata-Beziehung (z. B. „Teil von“)</div><div><i style="border-color:var(--ink);border-top-style:dashed"></i>gefundener Verbindungsweg</div></div>
-    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben), reihum fair verteilt auf deine Themen, damit kein stark vernetztes Thema alles belegt. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Ein Viertel der Plätze ist für <b>Brücken</b> reserviert: Vorschläge, die zwei verschiedene deiner Themen verbinden, erkennbar am zweifarbigen Außenring. Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
+    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben), reihum fair verteilt auf deine Themen, damit kein stark vernetztes Thema alles belegt. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Ein Viertel der Plätze ist für <b>Brücken</b> reserviert: Vorschläge, die zwei verschiedene deiner Themen verbinden, erkennbar am zweifarbigen Außenring. Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
   $('pop').classList.add('on');
   const gnLabel = () => { $('gnv').textContent = (G.ghostMax || 0) + ' von ' + (G.ghostAvail || 0); };
   gnLabel();
@@ -1658,6 +1720,7 @@ function select(n) {
       <div class="sm">${n.path ? 'Zwischenschritt auf dem gefundenen Verbindungsweg. Noch nicht gelesen.' : `Noch nicht gelesen. ${n.c === 1 ? 'Einer' : n.c} deiner gelesenen Artikel ${n.c === 1 ? 'verlinkt' : 'verlinken'} hierher: <b>${n.from.map(k => esc(db.nodes[k] ? db.nodes[k].title : k)).join(', ')}</b>`} ${clTag}</div>
       ${n.bridge ? `<div class="bridge">⇄ Brücke zwischen ${n.bridge.map(c => G.clusters[c] ? `<span class="cltag"><i style="background:${pal(c)}"></i>${esc(G.clusters[c].name)}</span>` : '').join(' und ')}</div>` : ''}
       ${n.hl ? '<div class="bridge">✎ Kommt in deinen Markierungen vor</div>' : ''}
+      ${(() => { const best = n.from.map(f => [f, db.nodes[f] ? csP(db.nodes[f], n.key) : 0]).sort((a, b) => b[1] - a[1])[0]; return best && best[1] >= .005 ? `<div class="bridge">↗ ${Math.round(best[1] * 100) || '<1'} % der Leser von „${esc(db.nodes[best[0]].title)}“ klicken hierher weiter</div>` : ''; })()}
       <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-prev>Vorschau</button><button class="btn sec" data-path>⇄ Verbindung</button><button class="btn sec" data-focus>Fokus</button><button class="btn sec" data-hide>Nicht vorschlagen</button></div>`;
   } else {
     const d = db.nodes[n.key];
@@ -1667,8 +1730,8 @@ function select(n) {
     const wds = wdOf(n.key);
     if (wds.length && db.showWd) html += `<div class="nbh">Wikidata-Beziehungen</div><div class="wdl">${wds.slice(0, 12).map(e => { const o = e.a === n.key ? e.b : e.a, t = db.nodes[o] ? db.nodes[o].title : o; return `<button type="button" data-k="${esc(o)}">${e.a === n.key ? `<span>${esc(e.l)}</span> → <b>${esc(t)}</b>` : `<b>${esc(t)}</b> → <span>${esc(e.l)}</span> → hier`}</button>`; }).join('')}</div>`;
     const sug = localSug(n);
-    if (sug.length) html += `<div class="nbh">Vorschläge von hier aus <span class="hint">(ungelesen, verlinkt aus diesem Artikel; Zahl = wie viele deiner Artikel darauf verlinken)</span></div>
-      <div class="nb">${sug.map(x => `<button class="chip gh" data-pv="${esc(x.o)}">${esc(x.o)}${x.c > 1 ? ` <small>${x.c}</small>` : ''}</button>`).join('')}</div>`;
+    if (sug.length) html += `<div class="nbh">Vorschläge von hier aus <span class="hint">(ungelesen; % = so viele Wikipedia-Leser klicken von hier dorthin weiter, × = so viele deiner Artikel verlinken darauf)</span></div>
+      <div class="nb">${sug.map(x => `<button class="chip gh" data-pv="${esc(x.o)}">${esc(x.o)}${x.p >= .005 ? ` <small>${Math.round(x.p * 100) || '<1'} %</small>` : x.c > 1 ? ` <small>${x.c}×</small>` : ''}</button>`).join('')}</div>`;
   }
   const nb = [...n.adj].sort((a, b) => (a.ghost - b.ghost) || b.w - a.w || a.title.localeCompare(b.title));
   const rn = nb.filter(m => !m.ghost);

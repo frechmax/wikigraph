@@ -19,6 +19,7 @@ self.addEventListener('fetch', e => {
     if (parse) e.respondWith(netFirst(req, V + '-articles', 5000, 600));
     else if (summary) e.respondWith(netFirst(req, V + '-previews', 4000, 400));
   }
+  if (u.hostname === 'raw.githubusercontent.com' && u.pathname.includes('/wikigraph/clickstream/')) e.respondWith(netFirst(req, V + '-clickstream', 5000, 600));
 });
 
 /* network first (fresh content), cache as fallback when offline or slow */
