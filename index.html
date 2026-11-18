@@ -828,10 +828,10 @@ async function loadCS(lang, title) {
   const sh = (fnv1a(title) % m.shards).toString(16).padStart(3, '0'), url = `${CS_BASE}${lang}/${sh}.json`;
   if (!csShards.has(url)) csShards.set(url, fetch(url).then(r => r.ok ? r.json() : {}).catch(() => { csShards.delete(url); return null; }));
   const d = await csShards.get(url); if (d === null) return null;
-  const e = d[title], month = m.langs[lang].month;
-  if (!e) return { m: month, t: 0, l: [] };
+  const e = d[title], month = m.langs[lang].month, v = m.langs[lang].min_n;
+  if (!e) return { m: month, v, t: 0, l: [] };
   const l = []; for (let i = 1; i < e.length; i += 2) l.push([e[i], e[i + 1]]);
-  return { m: month, t: e[0], l };
+  return { m: month, v, t: e[0], l };
 }
 async function attachCS(key) {
   const n = db.nodes[key]; if (!n) return;
@@ -842,7 +842,7 @@ async function attachCS(key) {
 /* fill in clickstream for articles read earlier, or when a new month is out */
 setTimeout(async function csBackfill() {
   const m = await csMeta(); if (!m) return;
-  const todo = Object.entries(db.nodes).filter(([, n]) => m.langs[n.lang] && (!n.cs || n.cs.m !== m.langs[n.lang].month)).map(([k]) => k);
+  const todo = Object.entries(db.nodes).filter(([, n]) => m.langs[n.lang] && (!n.cs || n.cs.m !== m.langs[n.lang].month || n.cs.v !== m.langs[n.lang].min_n)).map(([k]) => k);
   for (const k of todo) { await attachCS(k); await new Promise(r => setTimeout(r, 250)); }
   if (todo.length && view === 'graph') { rebuild(); heat(.2); }
 }, 4000);
