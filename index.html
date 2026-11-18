@@ -250,6 +250,29 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .logo-big{width:84px;height:84px;color:var(--ink);opacity:.9;margin-bottom:10px}
 :root{--logoacc:#c0873f}
 html[data-theme=dark]{--logoacc:#d9a35f}
+mark.hlm{color:inherit;border-radius:2px;padding:0 1px;cursor:pointer}
+.hl-y{background:rgba(255,205,40,.42)} .hl-g{background:rgba(90,200,120,.36)} .hl-b{background:rgba(90,160,255,.34)} .hl-r{background:rgba(255,110,110,.34)}
+html[data-theme=dark] .hl-y{background:rgba(255,205,40,.32)} html[data-theme=dark] .hl-g{background:rgba(90,200,120,.3)} html[data-theme=dark] .hl-b{background:rgba(90,160,255,.3)} html[data-theme=dark] .hl-r{background:rgba(255,110,110,.3)}
+mark.hlm.noteend::after{content:"✎";font-size:.7em;vertical-align:super;margin-left:2px;opacity:.75}
+mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
+.selbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(70px + var(--bot));display:none;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:6px 8px 6px 14px;box-shadow:0 6px 20px rgba(0,0,0,.18);z-index:32;font-size:13px;white-space:nowrap}
+.selbar.on{display:flex}
+.selbar span{color:var(--muted)}
+.dot{width:28px;height:28px;border-radius:50%;border:2px solid transparent;padding:0;flex:none}
+.dot.on{border-color:var(--ink)}
+.selnote{border:0;background:var(--btn2);border-radius:99px;padding:6px 11px;font-size:13px}
+.hlq{margin:0;padding:8px 10px;border-radius:6px;font-size:15px;line-height:1.45}
+#hlnote{width:100%;margin-top:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:9px 11px;font:inherit;font-size:15px;resize:vertical;color:var(--ink)}
+.hlbar{display:flex;align-items:center;gap:8px;margin-top:10px}
+.hlbar .btn{padding:8px 13px;font-size:14px}
+.ngroup{margin-bottom:18px}
+.ntitle{border:0;background:none;padding:6px 0;font-family:Georgia,"Times New Roman",serif;font-size:19px;text-align:left;color:var(--ink)}
+.ntitle span{color:var(--accent)}
+.nitem{padding:6px 0 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.nnote{font-size:14px;margin-top:6px;padding-left:10px;border-left:2px solid var(--line)}
+.nmeta{font-size:12px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between}
+.nmeta button{border:0;background:none;color:var(--accent);font-size:12px;padding:0}
+.sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -289,6 +312,7 @@ html[data-theme=dark]{--logoacc:#d9a35f}
 </section>
 <div id="swipe">‹</div>
 <div class="hlnav" id="hlnav"></div>
+<div class="selbar" id="selbar"><span>Markieren</span><button class="dot hl-y" data-c="y" aria-label="Gelb"></button><button class="dot hl-g" data-c="g" aria-label="Grün"></button><button class="dot hl-b" data-c="b" aria-label="Blau"></button><button class="dot hl-r" data-c="r" aria-label="Rot"></button><button class="selnote" data-note="1">✎ Kommentar</button></div>
 
 <!-- GRAPH -->
 <section class="view" id="v-graph">
@@ -308,6 +332,20 @@ html[data-theme=dark]{--logoacc:#d9a35f}
   <div class="focuschip" id="focuschip"></div>
   <div class="playlab" id="playlab"></div>
   <div class="sheet" id="sheet"></div>
+</section>
+
+<!-- NOTES -->
+<section class="view" id="v-notes">
+  <div class="bar">
+    <h1>Notizen</h1>
+    <div class="gstat" id="notesStat"></div>
+    <div class="searchrow"><input id="notesQ" type="search" placeholder="Markierungen und Kommentare durchsuchen" autocomplete="off"></div>
+    <div class="clusters" id="notesColors"></div>
+  </div>
+  <div class="wrap">
+    <div id="notesList"></div>
+    <div class="btns" style="margin-top:18px"><button class="btn sec" id="notesMd">Als Markdown (Obsidian)</button><button class="btn sec" id="notesCopy">Markdown kopieren</button></div>
+  </div>
 </section>
 
 <!-- MORE -->
@@ -338,6 +376,7 @@ html[data-theme=dark]{--logoacc:#d9a35f}
   <button data-v="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Suche</button>
   <button data-v="read"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h6a2 2 0 012 2v12a2 2 0 00-2-2H4zM20 5h-6a2 2 0 00-2 2v12a2 2 0 012-2h6z"/></svg>Lesen</button>
   <button data-v="graph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.3 7l9.3.6M6.3 8.2l4.6 7.6M17.7 9.2l-4.6 6.6"/></svg>Graph</button>
+  <button data-v="notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l5 5-9 9H6v-5z"/><path d="M4 21h16"/></svg>Notizen</button>
   <button data-v="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Verlauf</button>
 </nav>
 <div id="toast"></div>
@@ -441,6 +480,8 @@ function show(v) {
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   if (v === 'graph') graphEnter();
   if (v === 'more') renderMore();
+  if (v === 'notes') renderNotes();
+  if (v !== 'read') $('selbar').classList.remove('on');
   if (v === 'search') renderHome();
   if (v === 'read' && was !== 'read') { $('v-read').scrollTop = readY; }
 }
@@ -452,8 +493,8 @@ function route() {
     const title = decodeURIComponent(rest.join('/'));
     const from = pendingFrom, restore = !navIntent; pendingFrom = null; navIntent = false;
     if (!current || current.lang !== lang || current.title !== title) { stash(); show('read'); openArticle(lang, title, from, restore); }
-    else { show('read'); if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); } }
-  } else if (['graph', 'more', 'search', 'read'].includes(h)) show(h);
+    else { show('read'); if (pendingMark) { const id = pendingMark; pendingMark = null; goMark(id); } else if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); } }
+  } else if (['graph', 'more', 'search', 'read', 'notes'].includes(h)) show(h);
   else show('search');
 }
 window.addEventListener('hashchange', route);
@@ -758,7 +799,8 @@ async function openArticle(lang, title, from, restore) {
     $('rtitle').textContent = cached.t;
     art.replaceChildren(...cached.art);
     recordVisit(lang, cached.t, from);
-    updateTrail(lang, cached.t, from, restore); renderMini();
+    updateTrail(lang, cached.t, from, restore); renderMini(); paintHighlights();
+    if (pendingMark) { const id = pendingMark; pendingMark = null; goMark(id); return; }
     if (restore) { $('v-read').scrollTop = cached.y; readY = cached.y; }
     else { $('v-read').scrollTop = 0; readY = 0; if (!pendingHL) resumePill(posStore[ck]); }
     if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); }
@@ -829,8 +871,10 @@ async function openArticle(lang, title, from, restore) {
   art.appendChild(root);
   if (ibw) requestAnimationFrame(() => { if (ibw.scrollHeight < 460) { ibw.classList.remove('cut'); ibw.querySelector('.ibmore').remove(); } });
   renderMini();
+  paintHighlights();
   const pos = posStore[key];
-  if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); }
+  if (pendingMark) { const id = pendingMark; pendingMark = null; goMark(id); }
+  else if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); }
   else if (pos && restore) applyPos(pos); else resumePill(pos);
   if (!db.tipPreview) { db.tipPreview = 1; save(); setTimeout(() => toast('Tipp: Link lang drücken = Vorschau'), 1200); }
 }
@@ -972,6 +1016,8 @@ async function showPreview(lang, title) {
 $('article').addEventListener('click', e => {
   if (lpFired) { lpFired = false; e.preventDefault(); e.stopPropagation(); return; }
   const a = e.target.closest('a');
+  const mk = e.target.closest('mark.hlm');
+  if (mk && !a && getSelection().isCollapsed) { editHl(mk.dataset.hid); return; }
   const ph = e.target.closest('button.phonos');
   if (ph) { try { (window._au = window._au || new Audio()).src = ph.dataset.audio; window._au.play().catch(() => toast('Audio nicht abspielbar')); } catch (err) {} return; }
   if (!a) return;
@@ -1348,6 +1394,7 @@ function draw() {
     if (n.ghost) { ctx.fillStyle = TC.bg; ctx.fill(); ctx.strokeStyle = n.cl >= 0 && G.color === 'topic' ? pal(n.cl) : TC.ghost; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]); }
     else { ctx.fillStyle = nodeColor(n); ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
     ctx.globalAlpha = lit(n) ? 1 : .3;
+    if (!n.ghost && db.hl && db.hl[n.key]) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + n.r * .75, n.y - n.r * .75, Math.max(2.6, n.r * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
     if (n.key === curKey) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 6 / k, 0, 6.2832); ctx.strokeStyle = TC.accent; ctx.lineWidth = 2 / k; ctx.setLineDash([3 / k, 3 / k]); ctx.stroke(); ctx.setLineDash([]); }
     if (n === sel) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 3.5 / k, 0, 6.2832); ctx.strokeStyle = TC.ink; ctx.lineWidth = 2 / k; ctx.stroke(); }
   }
@@ -1586,7 +1633,7 @@ function select(n) {
     const d = db.nodes[n.key];
     html = `<div class="st">${esc(n.title)}</div>
       <div class="sm">${d.desc ? esc(d.desc) + '<br>' : ''}${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)} ${clTag}</div>
-      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button></div>`;
+      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button>${db.hl && db.hl[n.key] ? `<button class="btn sec" data-notes>✎ ${db.hl[n.key].length} Markierung${db.hl[n.key].length > 1 ? 'en' : ''}</button>` : ''}</div>`;
     const sug = localSug(n);
     if (sug.length) html += `<div class="nbh">Vorschläge von hier aus <span class="hint">(ungelesen, verlinkt aus diesem Artikel; Zahl = wie viele deiner Artikel darauf verlinken)</span></div>
       <div class="nb">${sug.map(x => `<button class="chip gh" data-pv="${esc(x.o)}">${esc(x.o)}${x.c > 1 ? ` <small>${x.c}</small>` : ''}</button>`).join('')}</div>`;
@@ -1603,6 +1650,7 @@ function select(n) {
   if (!wasOpen || gest) guardTap(sh);
   sh.querySelector('[data-open]').onclick = () => openTitle(n.lang, n.title, null);
   sh.querySelector('[data-close]').onclick = closeSheet;
+  const nb2 = sh.querySelector('[data-notes]'); if (nb2) nb2.onclick = () => { notesFilter.q = n.title; $('notesQ').value = n.title; go('#notes'); };
   const pv = sh.querySelector('[data-prev]'); if (pv) pv.onclick = () => showPreview(n.lang, n.title);
   sh.querySelector('[data-focus]').onclick = () => {
     G.focus = G.focus === n.key ? null : n.key; G.hiCl = null; computeFocus(); select(n);
@@ -1616,6 +1664,195 @@ function select(n) {
 }
 function guardTap(el) { el.style.pointerEvents = 'none'; clearTimeout(el._g); el._g = setTimeout(() => { el.style.pointerEvents = ''; }, 450); }
 function closeSheet() { G.sel = null; clearTemp(); $('sheet').classList.remove('on'); requestDraw(); }
+
+/* ---------- highlights & notes ---------- */
+const HLC = { y: 'Gelb', g: 'Grün', b: 'Blau', r: 'Rot' };
+const hlRoot = () => $('article').querySelector('.mw-parser-output');
+function textNodes(root) {
+  const out = [], w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentNode.closest('style, script') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+  let n; while ((n = w.nextNode())) out.push(n);
+  return out;
+}
+function fullText(nodes) { let s = ''; for (const n of nodes) s += n.data; return s; }
+/* character offset of a DOM position within the article text */
+function textOffset(nodes, container, offset) {
+  if (container.nodeType !== 3) {               // element: position before child[offset]
+    const child = container.childNodes[offset];
+    let pos = 0;
+    for (const n of nodes) {
+      if (child ? (child === n || child.contains(n) || (child.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING)) : !(container.contains(n) || (container.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING))) return pos;
+      pos += n.data.length;
+    }
+    return pos;
+  }
+  let pos = 0;
+  for (const n of nodes) { if (n === container) return pos + offset; pos += n.data.length; }
+  return -1;
+}
+/* find a stored quote again (survives small edits of the article) */
+function locate(full, h) {
+  let best = -1, bs = -1, i = full.indexOf(h.text);
+  while (i >= 0) {
+    let sc = 0;
+    const pre = full.slice(Math.max(0, i - h.prefix.length), i), suf = full.slice(i + h.text.length, i + h.text.length + h.suffix.length);
+    for (let k = 1; k <= Math.min(pre.length, h.prefix.length) && pre[pre.length - k] === h.prefix[h.prefix.length - k]; k++) sc++;
+    for (let k = 0; k < Math.min(suf.length, h.suffix.length) && suf[k] === h.suffix[k]; k++) sc++;
+    sc -= Math.abs(i - (h.start || 0)) / 1e6;
+    if (sc > bs) { bs = sc; best = i; }
+    i = full.indexOf(h.text, i + 1);
+  }
+  return best;
+}
+function wrapRange(nodes, start, end, h) {
+  let pos = 0; const marks = [];
+  for (const n of nodes.slice()) {
+    const len = n.data.length, a = Math.max(start, pos), b = Math.min(end, pos + len);
+    if (a < b && n.data.slice(a - pos, b - pos).trim() !== '' || (a < b && marks.length)) {
+      let t = n;
+      if (a - pos > 0) t = t.splitText(a - pos);
+      if (b - a < t.data.length) t.splitText(b - a);
+      const m = document.createElement('mark');
+      m.className = 'hlm hl-' + h.color + (h.note ? ' hasnote' : ''); m.dataset.hid = h.id;
+      t.parentNode.insertBefore(m, t); m.appendChild(t);
+      marks.push(m);
+    }
+    pos += len;
+    if (pos >= end) break;
+  }
+  if (marks.length && h.note) marks[marks.length - 1].classList.add('noteend');
+  return marks;
+}
+function paintHighlights() {
+  const root = hlRoot(); if (!root || !current) return;
+  const list = (db.hl || {})[K(current.lang, current.title)] || [];
+  let miss = 0;
+  for (const h of list) {
+    if (root.querySelector(`mark[data-hid="${h.id}"]`)) continue;
+    const nodes = textNodes(root), full = fullText(nodes), i = locate(full, h);
+    if (i < 0) { miss++; continue; }
+    wrapRange(nodes, i, i + h.text.length, h);
+  }
+  if (miss) toast(miss === 1 ? 'Eine Markierung passt nicht mehr zum geänderten Artikel' : miss + ' Markierungen passen nicht mehr zum geänderten Artikel');
+}
+function unpaint(id) {
+  $('article').querySelectorAll(`mark[data-hid="${id}"]`).forEach(m => { const p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m); m.remove(); p.normalize(); });
+}
+function hlList(key) { db.hl = db.hl || {}; return db.hl[key] || (db.hl[key] = []); }
+function findHl(id) { for (const k in db.hl || {}) { const h = db.hl[k].find(x => x.id === id); if (h) return [k, h]; } return [null, null]; }
+
+/* selection toolbar */
+let selRange = null, selT;
+document.addEventListener('selectionchange', () => {
+  clearTimeout(selT);
+  selT = setTimeout(() => {
+    const sel = getSelection(), root = hlRoot(), bar = $('selbar');
+    if (view !== 'read' || !root || !sel.rangeCount || sel.isCollapsed || !root.contains(sel.anchorNode) || !root.contains(sel.focusNode) || sel.toString().trim().length < 2) {
+      bar.classList.remove('on'); return;
+    }
+    selRange = sel.getRangeAt(0).cloneRange();
+    bar.classList.add('on');
+  }, 200);
+});
+function createHl(color, withNote) {
+  const root = hlRoot(); if (!root || !selRange || !current) return;
+  const nodes = textNodes(root), full = fullText(nodes);
+  let s = textOffset(nodes, selRange.startContainer, selRange.startOffset), e = textOffset(nodes, selRange.endContainer, selRange.endOffset);
+  if (s < 0 || e <= s) return;
+  while (s < e && /\s/.test(full[s])) s++;
+  while (e > s && /\s/.test(full[e - 1])) e--;
+  const links = [...new Set([...root.querySelectorAll('a[data-wt]')].filter(a => selRange.intersectsNode(a)).map(a => a.dataset.wt))];
+  const h = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), color, text: full.slice(s, e), prefix: full.slice(Math.max(0, s - 32), s), suffix: full.slice(e, e + 32), start: s, note: '', links, ts: Date.now() };
+  hlList(K(current.lang, current.title)).push(h);
+  save();
+  wrapRange(nodes, s, e, h);
+  getSelection().removeAllRanges(); selRange = null; $('selbar').classList.remove('on');
+  if (withNote) editHl(h.id, true);
+  else toast('Markiert');
+}
+$('selbar').addEventListener('pointerdown', e => e.preventDefault());   // keep the text selection while tapping
+$('selbar').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.c) createHl(b.dataset.c, false);
+  else if (b.dataset.note) createHl('y', true);
+});
+
+/* edit sheet for one highlight */
+function editHl(id, focusNote) {
+  const [key, h] = findHl(id); if (!h) return;
+  const pb = $('popbody');
+  pb.innerHTML = `<div class="pophead">Markierung</div>
+    <blockquote class="hlq hl-${h.color}">${esc(h.text)}</blockquote>
+    <textarea id="hlnote" rows="3" placeholder="Kommentar, Gedanke, Frage …">${esc(h.note || '')}</textarea>
+    <div class="hlbar">${Object.keys(HLC).map(c => `<button class="dot hl-${c}${c === h.color ? ' on' : ''}" data-c="${c}" aria-label="${HLC[c]}"></button>`).join('')}
+      <span style="flex:1"></span><button class="btn sec" data-del>Löschen</button><button class="btn" data-ok>Fertig</button></div>`;
+  $('pop').classList.add('on');
+  const ta = $('hlnote');
+  if (focusNote) setTimeout(() => ta.focus(), 50);
+  const repaint = () => { if (current && K(current.lang, current.title) === key) { unpaint(h.id); paintHighlights(); } };
+  ta.oninput = () => { h.note = ta.value; save(); };
+  ta.onchange = repaint;
+  pb.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { h.color = b.dataset.c; save(); pb.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b)); pb.querySelector('.hlq').className = 'hlq hl-' + h.color; repaint(); });
+  pb.querySelector('[data-ok]').onclick = () => { h.note = ta.value; save(); repaint(); $('pop').classList.remove('on'); if (view === 'notes') renderNotes(); };
+  pb.querySelector('[data-del]').onclick = () => {
+    db.hl[key] = db.hl[key].filter(x => x.id !== h.id); if (!db.hl[key].length) delete db.hl[key];
+    save(); unpaint(h.id); $('pop').classList.remove('on'); toast('Markierung gelöscht'); if (view === 'notes') renderNotes();
+  };
+}
+
+/* jump to a highlight after opening its article */
+let pendingMark = null;
+function goMark(id) {
+  const m = $('article').querySelector(`mark[data-hid="${id}"]`); if (!m) return;
+  let d = m.closest('details'); while (d) { d.open = true; d = d.parentElement.closest('details'); }
+  const ib = m.closest('.ibwrap.cut'); if (ib) { const b = ib.querySelector('.ibmore'); b ? b.click() : ib.classList.remove('cut'); }
+  m.scrollIntoView({ block: 'center' });
+  $('article').querySelectorAll(`mark[data-hid="${id}"]`).forEach(x => { x.classList.remove('flash'); void x.offsetWidth; x.classList.add('flash'); });
+}
+
+/* notes view */
+let notesFilter = { q: '', c: null };
+function renderNotes() {
+  const box = $('notesList'), all = [];
+  for (const key in db.hl || {}) for (const h of db.hl[key]) all.push({ key, h });
+  $('notesStat').textContent = all.length ? `${all.length} Markierungen in ${Object.keys(db.hl).length} Artikeln` : '';
+  const q = notesFilter.q.toLowerCase();
+  const list = all.filter(x => (!notesFilter.c || x.h.color === notesFilter.c) && (!q || x.h.text.toLowerCase().includes(q) || (x.h.note || '').toLowerCase().includes(q) || x.key.toLowerCase().includes(q)));
+  $('notesColors').innerHTML = `<button class="chip${!notesFilter.c ? ' on' : ''}" data-c="">Alle</button>` + Object.keys(HLC).map(c => `<button class="chip${notesFilter.c === c ? ' on' : ''}" data-c="${c}"><i class="sw hl-${c}"></i>${HLC[c]}</button>`).join('');
+  $('notesColors').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { notesFilter.c = b.dataset.c || null; renderNotes(); });
+  if (!all.length) { box.innerHTML = '<div class="empty">Noch keine Markierungen.<br><br>Markiere beim Lesen einen Text, dann erscheint unten eine Leiste zum Markieren und Kommentieren.</div>'; return; }
+  if (!list.length) { box.innerHTML = '<div class="empty">Nichts gefunden.</div>'; return; }
+  const groups = new Map();
+  list.sort((a, b) => b.h.ts - a.h.ts).forEach(x => { if (!groups.has(x.key)) groups.set(x.key, []); groups.get(x.key).push(x.h); });
+  box.innerHTML = '';
+  for (const [key, hs] of groups) {
+    const n = db.nodes[key], title = n ? n.title : key.slice(key.indexOf(':') + 1), lang = key.slice(0, key.indexOf(':'));
+    const sec = document.createElement('div'); sec.className = 'ngroup';
+    sec.innerHTML = `<button class="ntitle" type="button">${esc(title)} <span>›</span></button>` + hs.sort((a, b) => (a.start || 0) - (b.start || 0)).map(h =>
+      `<div class="nitem" data-id="${h.id}"><blockquote class="hlq hl-${h.color}">${esc(h.text.length > 400 ? h.text.slice(0, 400) + '…' : h.text)}</blockquote>${h.note ? `<div class="nnote">${esc(h.note)}</div>` : ''}<div class="nmeta">${fmtDate(h.ts)}<button type="button" data-edit="${h.id}">bearbeiten</button></div></div>`).join('');
+    sec.querySelector('.ntitle').onclick = () => openTitle(lang, title, null);
+    sec.querySelectorAll('.nitem').forEach(it => it.onclick = e => {
+      if (e.target.closest('[data-edit]')) { editHl(it.dataset.id); return; }
+      pendingMark = it.dataset.id; openTitle(lang, title, null);
+    });
+    box.appendChild(sec);
+  }
+}
+$('notesQ').addEventListener('input', () => { notesFilter.q = $('notesQ').value.trim(); renderNotes(); });
+function notesMarkdown() {
+  let md = `# WikiGraph – Markierungen\n\nExport vom ${new Date().toLocaleDateString('de-DE')}\n`;
+  for (const key in db.hl || {}) {
+    const n = db.nodes[key], title = n ? n.title : key.slice(key.indexOf(':') + 1), lang = key.slice(0, key.indexOf(':'));
+    md += `\n## [[${title}]]\n[Wikipedia](https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))})\n`;
+    for (const h of db.hl[key].slice().sort((a, b) => (a.start || 0) - (b.start || 0))) {
+      md += `\n> ${h.text.replace(/\n+/g, ' ')}\n`;
+      if (h.note) md += `\n${h.note}\n`;
+      if (h.links && h.links.length) md += `\nLinks: ${h.links.map(l => `[[${l}]]`).join(', ')}\n`;
+    }
+  }
+  return md;
+}
+$('notesMd').onclick = () => download(`wikigraph-markierungen-${stamp()}.md`, notesMarkdown(), 'text/markdown');
+$('notesCopy').onclick = async () => { try { await navigator.clipboard.writeText(notesMarkdown()); toast('Markdown kopiert'); } catch (e) { toast('Kopieren nicht möglich'); } };
 
 /* ---------- more: history, stats, export ---------- */
 function renderMore() {
@@ -1668,6 +1905,7 @@ $('file').onchange = async e => {
     db.edges.sort((a, b) => a.ts - b.ts);
     Object.assign(db.alias, d.alias || {}); aliasRev++;
     db.hidden = [...new Set([...(db.hidden || []), ...(d.hidden || [])])];
+    for (const k in d.hl || {}) { const L = hlList(k), ids = new Set(L.map(x => x.id)); d.hl[k].forEach(h => { if (!ids.has(h.id)) L.push(h); }); }
     for (const k in d.pos || {}) if (!db.pos[k]) db.pos[k] = d.pos[k];
     save(); savePositions(); G.dirty = true; G.fitted = false; renderMore(); toast('Import erfolgreich');
   } catch (err) { toast('Datei konnte nicht gelesen werden'); }
