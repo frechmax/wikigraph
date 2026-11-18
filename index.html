@@ -401,7 +401,7 @@ function applyTheme() {
 function setTheme(m) { db.theme = m; save(); applyTheme(); }
 try { mqDark.addEventListener('change', applyTheme); } catch (e) {}
 const K = (lang, title) => lang + ':' + title;
-const resolve = k => { const [l, ...r] = k.split(':'); const a = db.alias[k]; return a ? K(l, a) : k; };
+const resolve = k => { const a = db.alias[k]; return a ? k.slice(0, k.indexOf(':')) + ':' + a : k; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const $ = id => document.getElementById(id);
 function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2200); }
