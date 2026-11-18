@@ -319,6 +319,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
       <button class="btn sec" id="imJson">JSON importieren</button>
       <button class="btn sec" id="exTtl">Als RDF (Turtle)</button>
       <button class="btn sec" id="cpTtl">Turtle kopieren</button>
+      <button class="btn sec" id="offAll">Alle gelesenen Artikel offline speichern</button>
       <button class="btn sec" id="unhide">Ausgeblendete Vorschläge zurückholen</button>
       <button class="btn warn" id="reset">Alles löschen</button>
     </div>
@@ -359,13 +360,28 @@ function load() {
   return blank();
 }
 let db = load();
-let saveT;
+/* IndexedDB (no 5 MB limit like localStorage); main data and graph positions are stored separately */
+let idbP = null;
+try {
+  idbP = new Promise((res, rej) => { const r = indexedDB.open('wikigraph', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  idbP.catch(() => { idbP = null; });
+} catch (e) { idbP = null; }
+async function idbGet(k) { const d = await idbP; return new Promise((res, rej) => { const q = d.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbSet(k, v) { const d = await idbP; return new Promise((res, rej) => { const t = d.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+let useIdb = false, saveT, posSaveT, dbRev = 0;
+function mainPart() { const m = Object.assign({}, db); delete m.pos; return m; }
 function save() {
+  dbRev++;
   clearTimeout(saveT);
-  saveT = setTimeout(() => {
+  saveT = setTimeout(async () => {
+    if (useIdb) { try { await idbSet('main', mainPart()); return; } catch (e) {} }
     try { localStorage.setItem(S_KEY, JSON.stringify(db)); }
     catch (e) { toast('Speichern fehlgeschlagen – bitte JSON exportieren'); }
-  }, 250);
+  }, 400);
+}
+function savePositions() {
+  clearTimeout(posSaveT);
+  posSaveT = setTimeout(() => { if (useIdb) idbSet('pos', db.pos).catch(() => {}); else save(); }, 600);
 }
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
 
@@ -393,6 +409,7 @@ const fmtDate = ts => new Date(ts).toLocaleDateString('de-DE', { day: '2-digit',
 const fmtTime = ts => new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
 /* ---------- api ---------- */
+const parseParams = title => ({ action: 'parse', page: title, prop: 'text|links|properties|displaytitle', redirects: 1, disableeditsection: 1, disabletoc: 1 });
 function api(lang, params) {
   const u = new URL(`https://${lang}.wikipedia.org/w/api.php`);
   const p = Object.assign({ format: 'json', formatversion: 2, origin: '*' }, params);
@@ -468,7 +485,12 @@ async function doSuggest() {
     if (tok !== sTok) return;
     const pages = ((d.query && d.query.pages) || []).sort((a, b) => (a.index ?? 99) - (b.index ?? 99));
     renderResults(pages.map(p => ({ title: p.title, desc: p.description, thumb: p.thumbnail && p.thumbnail.source })), lang);
-  } catch (e) { if (tok === sTok) $('results').innerHTML = '<div class="empty">Keine Verbindung zu Wikipedia.</div>'; }
+  } catch (e) {
+    if (tok !== sTok) return;
+    const ql = q.toLowerCase(), loc = Object.values(db.nodes).filter(n => n.title.toLowerCase().includes(ql)).slice(0, 15);
+    renderResults(loc.map(n => ({ title: n.title, desc: n.desc || 'gelesen am ' + fmtDate(n.last) })), lang);
+    $('results').insertAdjacentHTML('afterbegin', '<div class="note" style="margin:8px 0">Offline – Treffer aus deinen gelesenen Artikeln</div>');
+  }
 }
 async function doFull() {
   const q = qEl.value.trim(), lang = db.lang, tok = ++sTok;
@@ -738,8 +760,8 @@ async function openArticle(lang, title, from, restore) {
   $('v-read').scrollTop = 0; readY = 0;
   let d;
   try {
-    d = await api(lang, { action: 'parse', page: title, prop: 'text|links|properties|displaytitle', redirects: 1, disableeditsection: 1, disabletoc: 1 });
-  } catch (e) { if (tok === rTok) art.innerHTML = '<div class="empty">Konnte den Artikel nicht laden. Bist du online?</div>'; return; }
+    d = await api(lang, parseParams(db.alias[K(lang, title)] || title));
+  } catch (e) { if (tok === rTok) art.innerHTML = navigator.onLine ? '<div class="empty">Konnte den Artikel nicht laden.</div>' : '<div class="empty">Du bist offline und dieser Artikel ist noch nicht gespeichert.<br><br>Artikel, die du schon gelesen hast, gehen auch offline.</div>'; return; }
   if (tok !== rTok) return;
   if (d.error) { art.innerHTML = `<div class="empty">${esc(d.error.info || 'Artikel nicht gefunden.')}</div>`; return; }
   const p = d.parse, t = p.title;
@@ -958,7 +980,13 @@ $('article').addEventListener('click', e => {
 });
 
 /* ---------- graph analysis ---------- */
+let anMemo = null;
 function analyze(tMax) {
+  const mk = dbRev + '|' + tMax;
+  if (anMemo && anMemo.k === mk) return anMemo.r;
+  const r = analyzeRaw(tMax); anMemo = { k: mk, r }; return r;
+}
+function analyzeRaw(tMax) {
   const vis = Object.keys(db.nodes).filter(k => db.nodes[k].first <= tMax);
   const visSet = new Set(vis);
   const hidden = new Set(db.hidden || []);
@@ -1161,9 +1189,47 @@ function renderGraphHeader(an) {
   G.clusters.forEach(cl => c.appendChild(mk(cl.name, cl.id, pal(cl.id), cl.members.length)));
 }
 function heat(a) { G.alpha = Math.max(G.alpha, a); loop(); }
+/* Barnes-Hut quadtree: repulsion in O(n log n) instead of O(n²) for big graphs */
+function qtNode(x, y, s) { return { x, y, s, m: 0, cx: 0, cy: 0, b: null, k: null, ex: null }; }
+function qtIns(nd, p, depth) {
+  if (!nd.k && nd.m === 0) { nd.b = p; nd.m = 1; nd.cx = p.x; nd.cy = p.y; return; }
+  if (!nd.k) {
+    if (depth > 20) { nd.cx = (nd.cx * nd.m + p.x) / (nd.m + 1); nd.cy = (nd.cy * nd.m + p.y) / (nd.m + 1); nd.m++; (nd.ex = nd.ex || []).push(p); return; }
+    const h = nd.s / 2, b = nd.b;
+    nd.k = [qtNode(nd.x, nd.y, h), qtNode(nd.x + h, nd.y, h), qtNode(nd.x, nd.y + h, h), qtNode(nd.x + h, nd.y + h, h)];
+    nd.b = null; qtPut(nd, b, depth);
+  }
+  nd.cx = (nd.cx * nd.m + p.x) / (nd.m + 1); nd.cy = (nd.cy * nd.m + p.y) / (nd.m + 1); nd.m++;
+  qtPut(nd, p, depth);
+}
+function qtPut(nd, p, depth) { const h = nd.s / 2; qtIns(nd.k[(p.x >= nd.x + h ? 1 : 0) + (p.y >= nd.y + h ? 2 : 0)], p, depth + 1); }
+function push(p, qx, qy, m, a) {
+  let dx = qx - p.x, dy = qy - p.y, d2 = dx * dx + dy * dy;
+  if (d2 > 160000) return;
+  if (d2 < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
+  const d = Math.sqrt(d2), f = 2200 * a * m / d2;
+  p.vx -= dx / d * f; p.vy -= dy / d * f;
+}
+function qtForce(nd, p, a) {
+  if (nd.m === 0) return;
+  if (!nd.k) {
+    if (nd.b && nd.b !== p) push(p, nd.b.x, nd.b.y, 1, a);
+    if (nd.ex) for (const q of nd.ex) if (q !== p) push(p, q.x, q.y, 1, a);
+    return;
+  }
+  const dx = nd.cx - p.x, dy = nd.cy - p.y, d2 = dx * dx + dy * dy;
+  if (nd.s * nd.s < .64 * d2) { if (d2 < (400 + nd.s) * (400 + nd.s)) push(p, nd.cx, nd.cy, nd.m, a); return; }
+  for (const c of nd.k) qtForce(c, p, a);
+}
 function tick() {
   const N = G.nodes, a = G.alpha;
-  for (let i = 0; i < N.length; i++) {
+  if (N.length > 150) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of N) { if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y; if (p.x > x1) x1 = p.x; if (p.y > y1) y1 = p.y; }
+    const root = qtNode(x0, y0, Math.max(x1 - x0, y1 - y0) + 1);
+    for (const p of N) qtIns(root, p, 0);
+    for (const p of N) qtForce(root, p, a);
+  } else for (let i = 0; i < N.length; i++) {
     const p = N[i];
     for (let j = i + 1; j < N.length; j++) {
       const q = N[j];
@@ -1198,7 +1264,7 @@ function loop() {
     G.raf = 0;
     if (view !== 'graph') return;
     const animating = stepAnim();
-    if (G.alpha > .004) { tick(); tick(); }
+    if (G.alpha > .004) { tick(); if (G.nodes.length < 400) tick(); }
     draw();
     if (G.alpha > .004 || animating) G.raf = requestAnimationFrame(step);
     else persistPos();
@@ -1207,8 +1273,8 @@ function loop() {
 }
 function requestDraw() { loop(); }
 function persistPos() {
-  for (const n of G.nodes) db.pos[n.key] = [Math.round(n.x), Math.round(n.y)];
-  save();
+  for (const n of G.nodes) if (!n.temp) db.pos[n.key] = [Math.round(n.x), Math.round(n.y)];
+  savePositions();
 }
 /* smooth camera moves */
 function flyTo(x, y, k) { G.anim = { from: { ...G.cam }, to: { x, y, k }, t0: performance.now(), d: 380 }; loop(); }
@@ -1237,16 +1303,29 @@ function draw() {
   const lit = n => sel ? (n === sel || sel.adj.has(n)) : hc != null ? n.cl === hc : true;
   const curKey = current ? K(current.lang, current.title) : null;
   const now = Date.now();
-  // links
+  // links, batched per style (one stroke per group instead of one per link)
+  const grp = {};
+  const [vx0, vy0] = toWorld(-50, -50), [vx1, vy1] = toWorld(W + 50, H + 50);
   for (const l of G.links) {
     if (!shown(l.a) || !shown(l.b)) continue;
+    if ((l.a.x < vx0 && l.b.x < vx0) || (l.a.x > vx1 && l.b.x > vx1) || (l.a.y < vy0 && l.b.y < vy0) || (l.a.y > vy1 && l.b.y > vy1)) continue;
     const on = sel ? (l.a === sel || l.b === sel) : hc != null ? (l.a.cl === hc && l.b.cl === hc) : true;
+    const g = l.type + (on ? 1 : 0) + (l.type === 'nav' ? Math.min(3, l.c) : '');
+    (grp[g] = grp[g] || []).push(l);
+  }
+  for (const g in grp) {
+    const L = grp[g], l0 = L[0], on = g.charAt(l0.type.length) === '1';
     ctx.globalAlpha = on ? 1 : .08;
-    ctx.beginPath(); ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.b.x, l.b.y);
-    if (l.type === 'nav') { ctx.strokeStyle = TC.accent; ctx.lineWidth = Math.min(4, 1.2 + l.c * .5) / Math.sqrt(k); ctx.setLineDash([]); }
-    else if (l.type === 'sem') { ctx.strokeStyle = TC.sem; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([5 / k, 4 / k]); }
+    if (l0.type === 'nav') { ctx.strokeStyle = TC.accent; ctx.lineWidth = Math.min(4, 1.2 + Math.min(3, l0.c) * .5) / Math.sqrt(k); ctx.setLineDash([]); }
+    else if (l0.type === 'sem') { ctx.strokeStyle = TC.sem; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([5 / k, 4 / k]); }
     else { ctx.strokeStyle = TC.ghost; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([1.5 / k, 3 / k]); }
+    ctx.beginPath();
+    for (const l of L) { ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.b.x, l.b.y); }
     ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  for (const g in grp) for (const l of grp[g]) {
+    ctx.globalAlpha = g.charAt(l.type.length) === '1' ? 1 : .08;
     if (l.type === 'nav') {
       const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || 1;
       const ux = dx / d, uy = dy / d, ex = l.b.x - ux * (l.b.r + 2), ey = l.b.y - uy * (l.b.r + 2), s = 6 / Math.sqrt(k);
@@ -1258,6 +1337,7 @@ function draw() {
   // nodes
   for (const n of G.nodes) {
     if (!shown(n)) continue;
+    if (n.x < vx0 - 20 || n.x > vx1 + 20 || n.y < vy0 - 20 || n.y > vy1 + 20) continue;
     let al = lit(n) ? 1 : .15;
     if (G.color === 'recent' && !n.ghost) al *= Math.max(.18, 1 - (now - n.last) / (30 * 864e5));
     ctx.globalAlpha = al;
@@ -1276,6 +1356,7 @@ function draw() {
   const cand = [];
   for (const n of G.nodes) {
     if (!shown(n)) continue;
+    if (n.x < vx0 || n.x > vx1 || n.y < vy0 || n.y > vy1) continue;
     let p;
     if (n === sel) p = 1e6;
     else if (sel) { if (!sel.adj.has(n)) continue; p = 5e5 + n.w; }
@@ -1287,7 +1368,7 @@ function draw() {
     }
     cand.push([p, n]);
   }
-  cand.sort((a, b) => b[0] - a[0]);
+  cand.sort((a, b) => b[0] - a[0]); if (cand.length > 260) cand.length = 260;
   const placed = [];
   for (const [, n] of cand) {
     const [sx, sy] = toScreen(n.x, n.y);
@@ -1585,7 +1666,7 @@ $('file').onchange = async e => {
     Object.assign(db.alias, d.alias || {});
     db.hidden = [...new Set([...(db.hidden || []), ...(d.hidden || [])])];
     for (const k in d.pos || {}) if (!db.pos[k]) db.pos[k] = d.pos[k];
-    save(); G.dirty = true; G.fitted = false; renderMore(); toast('Import erfolgreich');
+    save(); savePositions(); G.dirty = true; G.fitted = false; renderMore(); toast('Import erfolgreich');
   } catch (err) { toast('Datei konnte nicht gelesen werden'); }
   e.target.value = '';
 };
@@ -1615,13 +1696,41 @@ $('unhide').onclick = () => { const c = (db.hidden || []).length; db.hidden = []
 $('reset').onclick = () => {
   const b = $('reset');
   if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = 'Wirklich alles löschen?'; setTimeout(() => { delete b.dataset.armed; b.textContent = 'Alles löschen'; }, 4000); return; }
-  db = blank(); save(); current = null; G.by = new Map(); G.dirty = true; G.fitted = false;
+  db = blank(); save(); savePositions(); current = null; G.by = new Map(); G.dirty = true; G.fitted = false;
   $('article').innerHTML = '<div class="empty">Noch kein Artikel geöffnet.</div>'; $('rtitle').textContent = 'Lesen'; $('rmeta').innerHTML = ''; $('mini').innerHTML = ''; trail = [];
   delete b.dataset.armed; b.textContent = 'Alles löschen'; renderMore(); toast('Gelöscht');
 };
 
-applyTheme();
-route();
+$('offAll').onclick = async () => {
+  const b = $('offAll'); if (b.dataset.run) return;
+  if (!navigator.onLine) { toast('Dafür musst du online sein'); return; }
+  b.dataset.run = 1;
+  const list = Object.values(db.nodes); let done = 0, i = 0;
+  const work = async () => { while (i < list.length) { const n = list[i++]; try { await api(n.lang, parseParams(n.title)); } catch (e) {} b.textContent = `Speichere … ${++done}/${list.length}`; } };
+  await Promise.all([work(), work()]);
+  b.textContent = `✓ ${list.length} Artikel offline verfügbar`; delete b.dataset.run;
+};
+window.addEventListener('offline', () => toast('Offline – gelesene Artikel bleiben lesbar'));
+window.addEventListener('online', () => toast('Wieder online'));
+
+async function boot() {
+  if (idbP) {
+    try {
+      const m = await idbGet('main');
+      if (m) { db = Object.assign(blank(), m); db.pos = (await idbGet('pos')) || {}; useIdb = true; }
+      else {                                   // first start with IndexedDB: move data over from localStorage
+        await idbSet('main', mainPart()); await idbSet('pos', db.pos || {}); useIdb = true;
+        try { localStorage.removeItem(S_KEY); } catch (e) {}
+      }
+    } catch (e) { useIdb = false; }
+  }
+  dbRev++;
+  langEl.value = db.lang;
+  applyTheme();
+  route();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+boot();
 </script>
 </body>
 </html>
