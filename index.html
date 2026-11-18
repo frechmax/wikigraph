@@ -1189,47 +1189,29 @@ function renderGraphHeader(an) {
   G.clusters.forEach(cl => c.appendChild(mk(cl.name, cl.id, pal(cl.id), cl.members.length)));
 }
 function heat(a) { G.alpha = Math.max(G.alpha, a); loop(); }
-/* Barnes-Hut quadtree: repulsion in O(n log n) instead of O(n²) for big graphs */
-function qtNode(x, y, s) { return { x, y, s, m: 0, cx: 0, cy: 0, b: null, k: null, ex: null }; }
-function qtIns(nd, p, depth) {
-  if (!nd.k && nd.m === 0) { nd.b = p; nd.m = 1; nd.cx = p.x; nd.cy = p.y; return; }
-  if (!nd.k) {
-    if (depth > 20) { nd.cx = (nd.cx * nd.m + p.x) / (nd.m + 1); nd.cy = (nd.cy * nd.m + p.y) / (nd.m + 1); nd.m++; (nd.ex = nd.ex || []).push(p); return; }
-    const h = nd.s / 2, b = nd.b;
-    nd.k = [qtNode(nd.x, nd.y, h), qtNode(nd.x + h, nd.y, h), qtNode(nd.x, nd.y + h, h), qtNode(nd.x + h, nd.y + h, h)];
-    nd.b = null; qtPut(nd, b, depth);
-  }
-  nd.cx = (nd.cx * nd.m + p.x) / (nd.m + 1); nd.cy = (nd.cy * nd.m + p.y) / (nd.m + 1); nd.m++;
-  qtPut(nd, p, depth);
-}
-function qtPut(nd, p, depth) { const h = nd.s / 2; qtIns(nd.k[(p.x >= nd.x + h ? 1 : 0) + (p.y >= nd.y + h ? 2 : 0)], p, depth + 1); }
-function push(p, qx, qy, m, a) {
+/* spatial grid: repulsion only acts within 400 px, so each node only checks its 9 neighbouring cells (same result as all-pairs, much faster for big graphs) */
+function push(p, qx, qy, a) {
   let dx = qx - p.x, dy = qy - p.y, d2 = dx * dx + dy * dy;
   if (d2 > 160000) return;
   if (d2 < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
-  const d = Math.sqrt(d2), f = 2200 * a * m / d2;
+  const d = Math.sqrt(d2), f = 2200 * a / d2;
   p.vx -= dx / d * f; p.vy -= dy / d * f;
 }
-function qtForce(nd, p, a) {
-  if (nd.m === 0) return;
-  if (!nd.k) {
-    if (nd.b && nd.b !== p) push(p, nd.b.x, nd.b.y, 1, a);
-    if (nd.ex) for (const q of nd.ex) if (q !== p) push(p, q.x, q.y, 1, a);
-    return;
+function gridRepulse(N, a) {
+  const C = 400, cells = new Map();
+  for (const p of N) { const k = (Math.floor(p.x / C) + 5000) * 10007 + Math.floor(p.y / C) + 5000; let c = cells.get(k); if (!c) cells.set(k, c = []); c.push(p); }
+  for (const p of N) {
+    const cx = Math.floor(p.x / C), cy = Math.floor(p.y / C);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const c = cells.get((cx + i + 5000) * 10007 + cy + j + 5000); if (!c) continue;
+      for (const q of c) if (q !== p) push(p, q.x, q.y, a);
+    }
   }
-  const dx = nd.cx - p.x, dy = nd.cy - p.y, d2 = dx * dx + dy * dy;
-  if (nd.s * nd.s < .64 * d2) { if (d2 < (400 + nd.s) * (400 + nd.s)) push(p, nd.cx, nd.cy, nd.m, a); return; }
-  for (const c of nd.k) qtForce(c, p, a);
 }
 function tick() {
   const N = G.nodes, a = G.alpha;
-  if (N.length > 150) {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const p of N) { if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y; if (p.x > x1) x1 = p.x; if (p.y > y1) y1 = p.y; }
-    const root = qtNode(x0, y0, Math.max(x1 - x0, y1 - y0) + 1);
-    for (const p of N) qtIns(root, p, 0);
-    for (const p of N) qtForce(root, p, a);
-  } else for (let i = 0; i < N.length; i++) {
+  if (N.length > 900) gridRepulse(N, a);
+  else for (let i = 0; i < N.length; i++) {
     const p = N[i];
     for (let j = i + 1; j < N.length; j++) {
       const q = N[j];
