@@ -283,6 +283,17 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 .nextl small{color:var(--muted);flex:none;margin-left:8px;position:relative;z-index:1}
 .nextl i{position:absolute;left:0;top:4px;bottom:4px;background:var(--badgebg);border-radius:4px;z-index:0}
 #mini [data-nt],#mini g.n{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.seg{display:flex;background:var(--btn2);border-radius:10px;padding:3px;margin:8px 0 6px}
+.seg button{flex:1;border:0;background:none;border-radius:8px;padding:6px 4px;font-size:13px;color:var(--muted)}
+.seg button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.ncmp{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ncmp .nextl{margin:4px 0 8px}
+.ncmp .nextl button{font-size:13px;padding:7px 2px;flex-wrap:wrap}
+.ncmp .nextl span{white-space:normal;line-height:1.25}
+.ncmp .nextl small{margin-left:4px}
+.nch{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.nextl button.inboth{outline:2px solid var(--accent);outline-offset:-2px;border-radius:6px}
+.nempty{font-size:13px;color:var(--muted);padding:8px 0}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -720,6 +731,39 @@ function similarTo(lang, title) {
     .then(d => ((d.query && d.query.search) || []).map(x => x.title).filter(t => t !== title)).catch(() => { simCache.delete(k); return null; }));
   return simCache.get(k);
 }
+/* "what next": what readers click (clickstream) vs. textually similar articles (morelike), switchable or side by side */
+function renderNext(slot, cur) {
+  const lang = current.lang, title = current.title;
+  const csL = cur.cs && cur.cs.t ? cur.cs.l.filter(([tg]) => !identCached(tg)).slice(0, 6).map(([tg, c]) => ({ t: tg, p: c / cur.cs.t })) : [];
+  const csState = cur.cs ? (csL.length ? 'ok' : 'none') : (csMetaV && !(csMetaV.langs || {})[lang] ? 'nolang' : 'wait');
+  const draw = sim => {
+    if (!current || current.title !== title) return;
+    const mode = db.nextMode || 'both';
+    const simL = (sim || []).slice(0, 6).map(t => ({ t }));
+    const csSet = new Set(csL.map(x => resolve(K(lang, x.t)))), simSet = new Set(simL.map(x => resolve(K(lang, x.t))));
+    const both = k => csSet.has(k) && simSet.has(k);
+    const item = (x, src) => { const k = resolve(K(lang, x.t)), read = !!db.nodes[k];
+      return `<button type="button" class="${both(k) ? 'inboth' : ''}" data-nt="${esc(x.t)}" data-src="${src}"><span>${read ? '● ' : ''}${esc(x.t)}</span>${x.p != null ? `<i style="width:${Math.max(4, Math.round(x.p * 100))}%"></i><small>${Math.round(x.p * 100) || '<1'} %</small>` : ''}</button>`; };
+    const csEmpty = csState === 'ok' ? '' : `<div class="nempty">${csState === 'none' ? 'Keine Klickdaten (weniger als 10 Klicks pro Weg im Monat)' : csState === 'nolang' ? 'Für diese Sprache gibt es keine Klickdaten' : 'Klickdaten werden geladen …'}</div>`;
+    const simEmpty = sim === undefined ? '<div class="nempty">Wird geladen …</div>' : simL.length ? '' : '<div class="nempty">Keine ähnlichen Artikel gefunden</div>';
+    const overlap = csL.filter(x => simSet.has(resolve(K(lang, x.t)))).length;
+    const st = db.nextStats || { cs: 0, sim: 0 };
+    let body;
+    if (mode === 'cs') body = `<div class="nextl">${csL.map(x => item(x, 'cs')).join('')}${csEmpty}</div><div class="mnote">Anteil der Wikipedia-Leser dieses Artikels, die dorthin weiterklicken${cur.cs && cur.cs.m ? ` (Clickstream ${esc(cur.cs.m)})` : ''}.</div>`;
+    else if (mode === 'sim') body = `<div class="nextl">${simL.map(x => item(x, 'sim')).join('')}${simEmpty}</div><div class="mnote">Inhaltlich ähnliche Artikel laut Wikipedia-Suche („morelike“, die Logik hinter der „Weiterlesen“-Box).</div>`;
+    else body = `<div class="ncmp"><div><div class="nch">Leser klicken</div><div class="nextl">${csL.map(x => item(x, 'cs')).join('')}${csEmpty}</div></div><div><div class="nch">Inhaltlich ähnlich</div><div class="nextl">${simL.map(x => item(x, 'sim')).join('')}${simEmpty}</div></div></div>
+      <div class="mnote">${csL.length && simL.length ? `Überschneidung: ${overlap} von ${Math.min(csL.length, simL.length)}${overlap ? ' (umrandet)' : ''}. ` : ''}Links: was echte Leser als Nächstes klicken. Rechts: was Wikipedias Suche inhaltlich für ähnlich hält.</div>`;
+    slot.innerHTML = `<div class="mh"><b>Als Nächstes</b></div><div class="seg">${[['both', 'Vergleich'], ['cs', 'Leser klicken'], ['sim', 'Ähnlich']].map(([m, l]) => `<button type="button" data-m="${m}" class="${m === mode ? 'on' : ''}">${l}</button>`).join('')}</div>${body}
+      ${st.cs + st.sim >= 3 ? `<div class="mnote">Du hast bisher ${st.cs}× aus „Leser klicken“ und ${st.sim}× aus „Ähnlich“ weitergelesen. ● = schon gelesen</div>` : '<div class="mnote">● = schon gelesen</div>'}`;
+    slot.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { db.nextMode = b.dataset.m; save(); draw(sim); });
+    slot.querySelectorAll('[data-nt]').forEach(b => b.onclick = () => {
+      const s2 = db.nextStats || { cs: 0, sim: 0 }; s2[b.dataset.src] = (s2[b.dataset.src] || 0) + 1; db.nextStats = s2; save();
+      openTitle(lang, b.dataset.nt, current);
+    });
+  };
+  draw(undefined);
+  similarTo(lang, title).then(list => draw(list || []));
+}
 function renderMiniNow() {
   const box = $('mini'); box.innerHTML = '';
   if (!current) return;
@@ -734,24 +778,8 @@ function renderMiniNow() {
     .sort((a, b) => (a.type === 'nav' ? 0 : 1) - (b.type === 'nav' ? 0 : 1) || b.n.visits.length - a.n.visits.length).slice(0, 10);
   const gh = an.ghosts.filter(g => g.from.includes(key)).slice(0, 6);
   const cur = db.nodes[key];
-  if (cur && cur.cs && cur.cs.t && cur.cs.l.length) {
-    const top = cur.cs.l.filter(([tg]) => !identCached(tg)).slice(0, 6);
-    box.innerHTML = `<div class="mh"><b>Als Nächstes lesen andere</b></div><div class="nextl">${top.map(([tg, c]) => { const k = resolve(K(current.lang, tg)), read = !!db.nodes[k]; return `<button type="button" data-nt="${esc(tg)}"><span>${read ? '● ' : ''}${esc(tg)}</span><i style="width:${Math.max(4, Math.round(c / cur.cs.t * 100))}%"></i><small>${Math.round(c / cur.cs.t * 100) || '<1'} %</small></button>`; }).join('')}</div><div class="mnote">Anteil der Wikipedia-Leser dieses Artikels, die dorthin weiterklicken (Wikipedia Clickstream ${esc(cur.cs.m)}). ● = schon gelesen</div>`;
-    box.querySelectorAll('[data-nt]').forEach(b => b.onclick = () => openTitle(current.lang, b.dataset.nt, current));
-  } else {
-    box.innerHTML = '';
-    // no clickstream for this article (too few readers, or language without data): show textually similar articles instead
-    const noCs = cur && ((cur.cs && (!cur.cs.t || !cur.cs.l.length)) || (!cur.cs && csMetaV && !(csMetaV.langs || {})[current.lang]));
-    if (noCs) {
-      const slot = document.createElement('div'); box.appendChild(slot);
-      const lang = current.lang, title = current.title;
-      similarTo(lang, title).then(list => {
-        if (!list || !list.length || !current || current.title !== title) return;
-        slot.innerHTML = `<div class="mh"><b>Ähnliche Artikel</b></div><div class="nextl">${list.map(t => `<button type="button" data-nt="${esc(t)}"><span>${db.nodes[resolve(K(lang, t))] ? '● ' : ''}${esc(t)}</span></button>`).join('')}</div><div class="mnote">${cur.cs ? 'Zu diesem Artikel gibt es keine Klickdaten: Wikipedia veröffentlicht nur Wege, die mindestens 10-mal im Monat geklickt werden. ' : 'Für diese Sprache gibt es keine Klickdaten. '}Stattdessen inhaltlich ähnliche Artikel (Wikipedia-Suche „morelike“). ● = schon gelesen</div>`;
-        slot.querySelectorAll('[data-nt]').forEach(b => b.onclick = () => openTitle(lang, b.dataset.nt, current));
-      });
-    }
-  }
+  box.innerHTML = '';
+  if (cur) { const slot = document.createElement('div'); box.appendChild(slot); renderNext(slot, cur); }
   box.insertAdjacentHTML('beforeend', `<div class="mh"><b>Im Graph</b><button type="button" id="miniAll">Ganzer Graph ›</button></div>`);
   $('miniAll').onclick = () => { G.focusKey = key; go('#graph'); };
   if (!nbs.length && !gh.length) { box.insertAdjacentHTML('beforeend', '<div class="mnote">Noch keine Verbindung zu anderen Artikeln, die du gelesen hast.</div>'); return; }
