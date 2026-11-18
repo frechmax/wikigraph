@@ -282,6 +282,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 .nextl span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative;z-index:1}
 .nextl small{color:var(--muted);flex:none;margin-left:8px;position:relative;z-index:1}
 .nextl i{position:absolute;left:0;top:4px;bottom:4px;background:var(--badgebg);border-radius:4px;z-index:0}
+#mini [data-nt],#mini g.n{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -693,6 +694,24 @@ $('tocBtn').onclick = () => {
 /* mini graph below the article: how this article hangs together with what you've read */
 let miniT;
 function renderMini() { clearTimeout(miniT); $('mini').innerHTML = ''; miniT = setTimeout(renderMiniNow, 120); }
+/* long-press = preview, also for "Als Nächstes lesen andere" and the mini graph */
+(() => {
+  const box = $('mini'); let t = null, st = null, fired = false;
+  const target = e => e.target.closest('[data-nt], g.n');
+  box.addEventListener('pointerdown', e => {
+    fired = false; const el = target(e); if (!el || !current) return;
+    st = { x: e.clientX, y: e.clientY }; clearTimeout(t);
+    t = setTimeout(() => {
+      fired = true; if (navigator.vibrate) try { navigator.vibrate(10); } catch (err) {}
+      if (el.dataset.nt) showPreview(current.lang, el.dataset.nt);
+      else { const k = el.dataset.k, i = k.indexOf(':'); showPreview(k.slice(0, i), db.nodes[k] ? db.nodes[k].title : k.slice(i + 1)); }
+    }, 450);
+  });
+  box.addEventListener('pointermove', e => { if (t && st && Math.hypot(e.clientX - st.x, e.clientY - st.y) > 10) { clearTimeout(t); t = null; } });
+  ['pointerup', 'pointercancel'].forEach(ev => box.addEventListener(ev, () => { clearTimeout(t); t = null; if (fired) setTimeout(() => { fired = false; }, 700); }));
+  box.addEventListener('click', e => { if (fired) { fired = false; e.preventDefault(); e.stopPropagation(); } }, true);
+  box.addEventListener('contextmenu', e => { if (target(e)) e.preventDefault(); });
+})();
 function renderMiniNow() {
   const box = $('mini'); box.innerHTML = '';
   if (!current) return;
