@@ -1567,7 +1567,7 @@ function tap(sx, sy, n) {
     return;
   }
   lastTap = { t: now, x: sx, y: sy };
-  if (n) select(n); else { closeSheet(); if (G.hiCl != null) { G.hiCl = null; renderGraphHeader(analyze(G.tMax)); } }
+  if (n) { select(n); centerOn(n, G.cam.k); } else { closeSheet(); if (G.hiCl != null) { G.hiCl = null; renderGraphHeader(analyze(G.tMax)); } }
 }
 
 /* sheet */
