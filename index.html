@@ -230,6 +230,17 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .legend2 i{display:inline-block;width:20px;height:0;border-top:2px solid;vertical-align:middle;margin-right:8px}
 .sheet .hint{font-size:11px;opacity:.8}
 .fnote{font-size:13px;color:var(--muted);line-height:1.5;margin:10px 0 4px}
+#article a.hl{background:var(--ghostbg);color:var(--ghostink);outline:2px solid var(--ghost);outline-offset:1px;border-radius:3px;animation:hlp .9s ease 3}
+@keyframes hlp{50%{outline-offset:4px;outline-color:transparent}}
+.hlnav{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(70px + var(--bot));display:none;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:5px 6px 5px 14px;box-shadow:0 6px 20px rgba(0,0,0,.16);z-index:30;font-size:13px;max-width:94%}
+.hlnav.on{display:flex}
+.hlnav span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ghostink)}
+.hlnav b{font-weight:600;flex:none}
+.hlnav button{border:0;background:var(--btn2);border-radius:99px;width:30px;height:30px;flex:none;font-size:12px}
+.sheet .spots{margin-top:6px}
+.sheet .spot{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.sheet .spot .sname{flex:1;min-width:0;text-align:left;border:0;background:none;padding:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet .spot .sgo{padding:6px 11px;font-size:13px;flex:none}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -268,6 +279,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
   <div id="mini"></div>
 </section>
 <div id="swipe">‹</div>
+<div class="hlnav" id="hlnav"></div>
 
 <!-- GRAPH -->
 <section class="view" id="v-graph">
@@ -391,7 +403,8 @@ let view = 'search';
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 function artHash(lang, title) { return '#a/' + lang + '/' + encodeURIComponent(title); }
 let navIntent = false;      // true = user opened an article (link/search); false = browser back/forward
-function openTitle(lang, title, from) { pendingFrom = from || null; navIntent = true; go(artHash(lang, title)); }
+let pendingHL = null;      // key of an article whose link should be highlighted after opening
+function openTitle(lang, title, from, hl) { pendingFrom = from || null; navIntent = true; pendingHL = hl || null; go(artHash(lang, title)); }
 function show(v) {
   const was = view;
   if (was === 'read' && v !== 'read') readY = $('v-read').scrollTop;
@@ -410,7 +423,7 @@ function route() {
     const title = decodeURIComponent(rest.join('/'));
     const from = pendingFrom, restore = !navIntent; pendingFrom = null; navIntent = false;
     if (!current || current.lang !== lang || current.title !== title) { stash(); show('read'); openArticle(lang, title, from, restore); }
-    else show('read');
+    else { show('read'); if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); } }
   } else if (['graph', 'more', 'search', 'read'].includes(h)) show(h);
   else show('search');
 }
@@ -711,7 +724,8 @@ async function openArticle(lang, title, from, restore) {
     recordVisit(lang, cached.t, from);
     updateTrail(lang, cached.t, from, restore); renderMini();
     if (restore) { $('v-read').scrollTop = cached.y; readY = cached.y; }
-    else { $('v-read').scrollTop = 0; readY = 0; resumePill(posStore[ck]); }
+    else { $('v-read').scrollTop = 0; readY = 0; if (!pendingHL) resumePill(posStore[ck]); }
+    if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); }
     return;
   }
   $('rtitle').textContent = title; $('mini').innerHTML = '';
@@ -780,7 +794,8 @@ async function openArticle(lang, title, from, restore) {
   if (ibw) requestAnimationFrame(() => { if (ibw.scrollHeight < 460) { ibw.classList.remove('cut'); ibw.querySelector('.ibmore').remove(); } });
   renderMini();
   const pos = posStore[key];
-  if (pos && restore) applyPos(pos); else resumePill(pos);
+  if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); }
+  else if (pos && restore) applyPos(pos); else resumePill(pos);
   if (!db.tipPreview) { db.tipPreview = 1; save(); setTimeout(() => toast('Tipp: Link lang drücken = Vorschau'), 1200); }
 }
 /* wrap every h2 chapter into a collapsible <details>, like mobile Wikipedia */
@@ -857,7 +872,37 @@ $('pop').onclick = e => {
   if (a && a.dataset.anchor) { e.preventDefault(); return; }
   if (!e.target.closest('#popbody') || e.target.closest('.popclose')) $('pop').classList.remove('on');
 };
-window.addEventListener('hashchange', () => { $('pop').classList.remove('on'); $('lb').classList.remove('on'); });
+window.addEventListener('hashchange', () => { $('pop').classList.remove('on'); $('lb').classList.remove('on'); hideSpots(); });
+/* jump to the places in the article where a given article is linked */
+let HL = null;
+function showLinkSpots(key) {
+  hideSpots();
+  const art = $('article');
+  const list = [...art.querySelectorAll('a[data-wt]')].filter(a => resolve(K(current.lang, a.dataset.wt)) === key && !a.closest('ol.references, .reflist, .references, .navbox'));
+  const title = key.slice(key.indexOf(':') + 1);
+  if (!list.length) { toast('Die Stelle mit „' + title + '“ wurde nicht gefunden'); return; }
+  HL = { list, i: 0, title };
+  const bar = $('hlnav');
+  bar.innerHTML = `<span>„${esc(title)}“</span><b id="hlc"></b>${list.length > 1 ? '<button type="button" data-p aria-label="Vorherige Stelle">▲</button><button type="button" data-n aria-label="Nächste Stelle">▼</button>' : ''}<button type="button" data-x aria-label="Schließen">✕</button>`;
+  bar.classList.add('on');
+  const p = bar.querySelector('[data-p]'), n = bar.querySelector('[data-n]');
+  if (p) p.onclick = () => goSpot(HL.i - 1);
+  if (n) n.onclick = () => goSpot(HL.i + 1);
+  bar.querySelector('[data-x]').onclick = hideSpots;
+  goSpot(0);
+}
+function goSpot(i) {
+  if (!HL) return;
+  const L = HL.list; i = (i + L.length) % L.length; HL.i = i;
+  L.forEach(a => a.classList.remove('hl'));
+  const a = L[i];
+  let d = a.closest('details'); while (d) { d.open = true; d = d.parentElement.closest('details'); }
+  const ib = a.closest('.ibwrap.cut'); if (ib) { const b = ib.querySelector('.ibmore'); b ? b.click() : ib.classList.remove('cut'); }
+  a.classList.add('hl');
+  a.scrollIntoView({ block: 'center' });
+  $('hlc').textContent = L.length > 1 ? (i + 1) + '/' + L.length : '';
+}
+function hideSpots() { if (HL) HL.list.forEach(a => a.classList.remove('hl')); HL = null; $('hlnav').classList.remove('on'); }
 /* long-press on a link: preview card instead of leaving the page */
 let lpT = null, lpStart = null, lpFired = false;
 $('article').addEventListener('pointerdown', e => {
@@ -1459,7 +1504,10 @@ function select(n) {
   }
   const nb = [...n.adj].sort((a, b) => (a.ghost - b.ghost) || b.w - a.w || a.title.localeCompare(b.title));
   const rn = nb.filter(m => !m.ghost);
-  if (rn.length) html += `<div class="nbh">${n.ghost ? 'Verlinkt von' : 'Gelesene Nachbarn'}</div><div class="nb">${rn.map(m => `<button class="chip" data-k="${esc(m.key)}">${esc(m.title)}</button>`).join('')}</div>`;
+  if (n.ghost) {
+    const src = n.from.map(k => db.nodes[k]).filter(Boolean);
+    if (src.length) html += `<div class="nbh">Fundstellen: wo wird „${esc(n.title)}“ verlinkt?</div><div class="spots">${src.map(d => `<div class="spot"><button type="button" class="sname" data-k="${esc(K(d.lang, d.title))}">${esc(d.title)}</button><button type="button" class="btn sec sgo" data-go="${esc(K(d.lang, d.title))}">Zur Stelle ›</button></div>`).join('')}</div>`;
+  } else if (rn.length) html += `<div class="nbh">Gelesene Nachbarn</div><div class="nb">${rn.map(m => `<button class="chip" data-k="${esc(m.key)}">${esc(m.title)}</button>`).join('')}</div>`;
   html += '<button class="shx" data-close aria-label="Schließen">✕</button>';
   const wasOpen = sh.classList.contains('on');
   sh.innerHTML = html; sh.classList.add('on'); sh.scrollTop = 0;
@@ -1475,6 +1523,7 @@ function select(n) {
   if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
   sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
   sh.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => showPreview(n.lang, b.dataset.pv));
+  sh.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { const d = db.nodes[b.dataset.go]; if (d) openTitle(d.lang, d.title, null, n.key); });
 }
 function guardTap(el) { el.style.pointerEvents = 'none'; clearTimeout(el._g); el._g = setTimeout(() => { el.style.pointerEvents = ''; }, 450); }
 function closeSheet() { G.sel = null; clearTemp(); $('sheet').classList.remove('on'); requestDraw(); }
