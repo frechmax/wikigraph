@@ -273,6 +273,10 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 .nmeta{font-size:12px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between}
 .nmeta button{border:0;background:none;color:var(--accent);font-size:12px;padding:0}
 .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.bridge{font-size:13px;margin:-4px 0 10px;color:var(--ink)}
+.wdl{margin-top:6px}
+.wdl button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:7px 0;font-size:14px;color:var(--ink)}
+.wdl span{color:var(--accent2)}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -344,7 +348,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
   </div>
   <div class="wrap">
     <div id="notesList"></div>
-    <div class="btns" style="margin-top:18px"><button class="btn sec" id="notesMd">Als Markdown (Obsidian)</button><button class="btn sec" id="notesCopy">Markdown kopieren</button></div>
+    <div class="btns" style="margin-top:18px"><button class="btn sec" id="notesMd">Als Markdown (Obsidian)</button><button class="btn sec" id="notesCopy">Markdown kopieren</button><button class="btn" id="notesVault">Ganzer Graph als Obsidian-Vault (.zip)</button></div>
   </div>
 </section>
 
@@ -1065,8 +1069,14 @@ function analyzeRaw(tMax) {
     else { const nl = { s: e.f, t: e.t, type: 'nav', c: 1 }; pairs.set(id, nl); links.push(nl); }
   }
   const gc = new Map();
+  // links inside your highlights count 3x
+  const hlk = new Map();
+  for (const a in db.hl || {}) { const n = db.nodes[a]; if (!n) continue; const set = new Set(); db.hl[a].forEach(h => (h.links || []).forEach(t => set.add(resolve(K(n.lang, t))))); hlk.set(a, set); }
+  // Wikidata relations among read articles
+  const wdl = new Map();
+  if (db.showWd && db.wd) for (const e of db.wd.edges) { const i = idx.get(e.a), j = idx.get(e.b); if (i === undefined || j === undefined) continue; const id = i < j ? i * N + j : j * N + i; if (!wdl.has(id)) wdl.set(id, { s: e.a, t: e.b, ls: [] }); wdl.get(id).ls.push(e.l); }
   for (let ai = 0; ai < N; ai++) {
-    const a = vis[ai], n = db.nodes[a], pre = n.lang + ':';
+    const a = vis[ai], n = db.nodes[a], pre = n.lang + ':', hs = hlk.get(a);
     const wt = 1 / Math.log2((n.out || []).length + 2);   // Adamic-Adar: a link from a long article counts less
     for (const k of resolvedOut(a, n)) {
       if (k === a || hidden.has(k)) continue;
@@ -1077,11 +1087,12 @@ function analyzeRaw(tMax) {
       } else {
         let g = gc.get(k);
         if (!g) { g = { key: k, title: k.slice(pre.length), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
-        if (g.from[g.from.length - 1] !== a) { g.c++; g.s += wt; g.from.push(a); g.fw.push(wt); }
+        if (g.from[g.from.length - 1] !== a) { const w = hs && hs.has(k) ? wt * 3 : wt; if (w !== wt) g.hl = true; g.c++; g.s += w; g.from.push(a); g.fw.push(w); }
       }
     }
   }
-  const ghosts = [...gc.values()].filter(g => g.c >= 2).sort((x, y) => y.s - x.s || x.title.localeCompare(y.title));
+  for (const [id, w] of wdl) { const l = pairs.get(id); if (l) { l.wd = w.ls; if (l.type === 'sem') l.type = 'wd'; } else { const nl = { s: w.s, t: w.t, type: 'wd', c: 1, wd: w.ls }; pairs.set(id, nl); links.push(nl); } }
+  const ghosts = [...gc.values()].filter(g => g.c >= 2 || g.hl).sort((x, y) => y.s - x.s || x.title.localeCompare(y.title));
   return { vis, links, ghosts, gc };
 }
 
@@ -1137,11 +1148,11 @@ const autoGhosts = nv => Math.max(6, Math.min(25, Math.round(nv / 3)));
 function ghostLimit(nv) { return db.ghostN == null ? autoGhosts(nv) : db.ghostN; }
 /* suggestions of the selected article, shown temporarily around it */
 function clearTemp() {
-  if (!G.nodes.some(n => n.temp)) return;
+  if (!G.nodes.some(n => n.temp) && !G.links.some(l => l.temp)) return;
   const tmp = new Set(G.nodes.filter(n => n.temp));
   G.nodes = G.nodes.filter(n => !tmp.has(n));
-  G.links = G.links.filter(l => !tmp.has(l.a) && !tmp.has(l.b));
-  if (G.phys) G.phys = G.phys.filter(l => !tmp.has(l.a) && !tmp.has(l.b));
+  G.links = G.links.filter(l => !tmp.has(l.a) && !tmp.has(l.b) && !l.temp);
+  if (G.phys) G.phys = G.phys.filter(l => !tmp.has(l.a) && !tmp.has(l.b) && !l.temp);
   tmp.forEach(n => G.by.delete(n.key));
   G.nodes.forEach(n => tmp.forEach(t => n.adj.delete(t)));
 }
@@ -1186,7 +1197,7 @@ function rebuild() {
     o.r = 6 + Math.sqrt(o.w) * 3.2;
     nodes.push(o); by.set(k, o);
   }
-  const links = an.links.filter(l => G.sem || l.type === 'nav').map(l => ({ ...l, a: by.get(l.s), b: by.get(l.t) }));
+  const links = an.links.filter(l => G.sem || l.type === 'nav' || l.type === 'wd').map(l => ({ ...l, a: by.get(l.s), b: by.get(l.t) }));
   // topics are computed on all connections (independent of the display toggles)
   computeClusters(nodes.slice(), an.links.map(l => ({ type: l.type, a: by.get(l.s), b: by.get(l.t) })));
   if (G.ghost) {
@@ -1198,21 +1209,27 @@ function rebuild() {
       g.from.forEach((f, i) => { const m = by.get(f); const c = m ? m.cl : -1; sc.set(c, (sc.get(c) || 0) + g.fw[i]); });
       let cl = -1, bw = -1; for (const [c, w] of sc) if (w > bw || (w === bw && c > cl)) { cl = c; bw = w; }
       g.cl = cl;
+      const cls = new Set(g.from.map(f => { const m = by.get(f); return m ? m.cl : -1; }).filter(c => c >= 0));
+      g.bridge = cls.size >= 2 ? [...cls] : null;
       if (!groups.has(cl)) groups.set(cl, []);
       groups.get(cl).push(g);           // already sorted by score
     }
     // fair share: pick round-robin across topics, strongest topic first in each round
-    const qs = [...groups.values()].sort((a, b) => b[0].s - a[0].s), picked = [];
+    // bridges between two of your topics get reserved places (serendipity instead of "more of the same")
+    const bridges = an.ghosts.filter(g => g.bridge).sort((a, b) => b.s * b.bridge.length - a.s * a.bridge.length).slice(0, max ? Math.max(1, Math.round(max / 4)) : 0);
+    const bset = new Set(bridges);
+    for (const q of groups.values()) for (let i = q.length - 1; i >= 0; i--) if (bset.has(q[i])) q.splice(i, 1);
+    const qs = [...groups.values()].filter(q => q.length).sort((a, b) => b[0].s - a[0].s), picked = bridges.slice();
     while (picked.length < max && qs.some(q => q.length)) for (const q of qs) { if (picked.length >= max) break; if (q.length) picked.push(q.shift()); }
     for (const g of picked) {
       const p = place(g.key, g.from[0]);
-      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cl: g.cl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
+      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cl: g.cl, bridge: g.bridge, hl: g.hl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
       nodes.push(o); by.set(g.key, o);
       for (const f of g.from) links.push({ s: f, t: g.key, type: 'ghost', a: by.get(f), b: o });
     }
   }
   // physics: all clicked + suggestion links, but at most 6 'linked' springs per article (dense topics would otherwise freeze the layout)
-  { const cnt = new Map(); G.phys = links.filter(l => { if (l.type !== 'sem') return true; const ca = cnt.get(l.a) || 0, cb = cnt.get(l.b) || 0; if (ca >= 6 || cb >= 6) return false; cnt.set(l.a, ca + 1); cnt.set(l.b, cb + 1); return true; }); }
+  { const cnt = new Map(); G.phys = links.filter(l => { if (l.type !== 'sem' && l.type !== 'wd') return true; const ca = cnt.get(l.a) || 0, cb = cnt.get(l.b) || 0; if (ca >= 6 || cb >= 6) return false; cnt.set(l.a, ca + 1); cnt.set(l.b, cb + 1); return true; }); }
   G.nodes = nodes; G.links = links; G.by = by; G.gc = an.gc; G.ghostMax = G.ghost ? Math.min(ghostLimit(an.vis.length), an.ghosts.length) : 0; G.ghostAvail = an.ghosts.length;
   nodes.forEach(n => n.adj = new Set());
   links.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
@@ -1292,8 +1309,8 @@ function tick() {
   }
   for (const l of (G.phys || G.links)) {
     const p = l.a, q = l.b;
-    const L = l.type === 'nav' ? 70 : l.type === 'sem' ? 120 : 90;
-    const s = l.type === 'nav' ? .08 : l.type === 'sem' ? .025 : .03;
+    const L = l.type === 'nav' ? 70 : l.type === 'sem' ? 120 : l.type === 'wd' ? 95 : 90;
+    const s = l.type === 'nav' ? .08 : l.type === 'sem' ? .025 : l.type === 'wd' ? .045 : .03;
     let dx = q.x - p.x, dy = q.y - p.y; const d = Math.sqrt(dx * dx + dy * dy) || 1;
     const f = (d - L) / d * s * a;
     dx *= f; dy *= f;
@@ -1367,6 +1384,8 @@ function draw() {
     ctx.globalAlpha = on ? 1 : .08;
     if (l0.type === 'nav') { ctx.strokeStyle = TC.accent; ctx.lineWidth = Math.min(4, 1.2 + Math.min(3, l0.c) * .5) / Math.sqrt(k); ctx.setLineDash([]); }
     else if (l0.type === 'sem') { ctx.strokeStyle = TC.sem; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([5 / k, 4 / k]); }
+    else if (l0.type === 'wd') { ctx.strokeStyle = TC.accent2; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([]); }
+    else if (l0.type === 'path') { ctx.strokeStyle = TC.ink; ctx.lineWidth = 1.4 / Math.sqrt(k); ctx.setLineDash([6 / k, 4 / k]); }
     else { ctx.strokeStyle = TC.ghost; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([1.5 / k, 3 / k]); }
     ctx.beginPath();
     for (const l of L) { ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.b.x, l.b.y); }
@@ -1391,7 +1410,14 @@ function draw() {
     if (G.color === 'recent' && !n.ghost) al *= Math.max(.18, 1 - (now - n.last) / (30 * 864e5));
     ctx.globalAlpha = al;
     ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 6.2832);
-    if (n.ghost) { ctx.fillStyle = TC.bg; ctx.fill(); ctx.strokeStyle = n.cl >= 0 && G.color === 'topic' ? pal(n.cl) : TC.ghost; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]); }
+    if (n.ghost) {
+      ctx.fillStyle = TC.bg; ctx.fill(); ctx.strokeStyle = n.path ? TC.ink : n.cl >= 0 && G.color === 'topic' ? pal(n.cl) : TC.ghost; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]);
+      if (n.bridge) { // bridge: second ring, split in the colours of the connected topics
+        const bs = n.bridge.slice(0, 4), seg = 6.2832 / bs.length;
+        bs.forEach((c, i) => { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 3.5 / k, i * seg, (i + 1) * seg); ctx.strokeStyle = pal(c); ctx.lineWidth = 2.4 / k; ctx.stroke(); });
+      }
+      if (n.hl) { ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(1.6, n.r * .35), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); }
+    }
     else { ctx.fillStyle = nodeColor(n); ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
     ctx.globalAlpha = lit(n) ? 1 : .3;
     if (!n.ghost && db.hl && db.hl[n.key]) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + n.r * .75, n.y - n.r * .75, Math.max(2.6, n.r * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
@@ -1494,7 +1520,7 @@ $('gFilter').onclick = () => {
   const chip = (id, on, label) => `<button class="chip${on ? ' on' : ''}" data-t="${id}">${label}</button>`;
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Ansicht</div>
-    <div class="frow">${chip('ghost', G.ghost, 'Vorschläge')}${chip('sem', G.sem, 'Querverbindungen')}${chip('lbl', G.lbl, 'Labels')}</div>
+    <div class="frow">${chip('ghost', G.ghost, 'Vorschläge')}${chip('sem', G.sem, 'Querverbindungen')}${chip('lbl', G.lbl, 'Labels')}${chip('wd', !!db.showWd, 'Wikidata-Beziehungen')}</div>
     <div class="flab">Anzahl Vorschläge im Graph</div>
     <div class="time"><button class="chip${db.ghostN == null ? ' on' : ''}" id="gnAuto" type="button">Auto</button><input type="range" id="gn" min="0" max="${Math.max(10, Math.min(60, G.ghostAvail || 0))}" value="${G.ghostMax || 0}"><span id="gnv"></span></div>
     <div class="frow" style="margin-top:8px">${chip('local', !!db.showLocal, 'Beim Antippen eigene Vorschläge einblenden')}</div>
@@ -1503,8 +1529,8 @@ $('gFilter').onclick = () => {
     <div class="flab">Zeitreise</div>
     <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
     <div class="flab">Legende</div>
-    <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div></div>
-    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben), reihum fair verteilt auf deine Themen, damit kein stark vernetztes Thema alles belegt. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
+    <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border-color:var(--accent2)"></i>Wikidata-Beziehung (z. B. „Teil von“)</div><div><i style="border-color:var(--ink);border-top-style:dashed"></i>gefundener Verbindungsweg</div></div>
+    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben), reihum fair verteilt auf deine Themen, damit kein stark vernetztes Thema alles belegt. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Ein Viertel der Plätze ist für <b>Brücken</b> reserviert: Vorschläge, die zwei verschiedene deiner Themen verbinden, erkennbar am zweifarbigen Außenring. Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
   $('pop').classList.add('on');
   const gnLabel = () => { $('gnv').textContent = (G.ghostMax || 0) + ' von ' + (G.ghostAvail || 0); };
   gnLabel();
@@ -1516,6 +1542,7 @@ $('gFilter').onclick = () => {
   $('gnAuto').onclick = () => { db.ghostN = null; save(); $('gnAuto').classList.add('on'); rebuild(); heat(.25); $('gn').value = G.ghostMax; gnLabel(); };
   pb.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
     const t = b.dataset.t;
+    if (t === 'wd') { db.showWd = !db.showWd; b.classList.toggle('on', db.showWd); save(); if (db.showWd && (!db.wd || db.wd.n !== Object.values(db.nodes).filter(n => n.qid).length)) loadWikidata(false); rebuild(); heat(.25); return; }
     if (t === 'local') { db.showLocal = !db.showLocal; save(); b.classList.toggle('on', db.showLocal); if (G.sel) select(G.sel); return; }
     if (t.startsWith('c:')) { G.color = t.slice(2); pb.querySelectorAll('[data-t^="c:"]').forEach(x => x.classList.toggle('on', x === b)); }
     else { G[t] = !G[t]; b.classList.toggle('on', G[t]); if (t !== 'lbl') { rebuild(); heat(.3); gnLabel(); } }
@@ -1619,6 +1646,7 @@ function tap(sx, sy, n) {
 
 /* sheet */
 function select(n) {
+  if (G.pick && n !== G.pick) { const a = G.pick; G.pick = null; findPath(a, n); return; }
   if (!n.temp) addTemp(n);
   G.sel = n; requestDraw();
   const sh = $('sheet');
@@ -1627,13 +1655,17 @@ function select(n) {
   let html;
   if (n.ghost) {
     html = `<div class="st">${esc(n.title)}</div>
-      <div class="sm">Noch nicht gelesen. ${n.c === 1 ? 'Einer' : n.c} deiner gelesenen Artikel ${n.c === 1 ? 'verlinkt' : 'verlinken'} hierher: <b>${n.from.map(k => esc(db.nodes[k] ? db.nodes[k].title : k)).join(', ')}</b> ${clTag}</div>
-      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-prev>Vorschau</button><button class="btn sec" data-focus>Fokus</button><button class="btn sec" data-hide>Nicht vorschlagen</button></div>`;
+      <div class="sm">${n.path ? 'Zwischenschritt auf dem gefundenen Verbindungsweg. Noch nicht gelesen.' : `Noch nicht gelesen. ${n.c === 1 ? 'Einer' : n.c} deiner gelesenen Artikel ${n.c === 1 ? 'verlinkt' : 'verlinken'} hierher: <b>${n.from.map(k => esc(db.nodes[k] ? db.nodes[k].title : k)).join(', ')}</b>`} ${clTag}</div>
+      ${n.bridge ? `<div class="bridge">⇄ Brücke zwischen ${n.bridge.map(c => G.clusters[c] ? `<span class="cltag"><i style="background:${pal(c)}"></i>${esc(G.clusters[c].name)}</span>` : '').join(' und ')}</div>` : ''}
+      ${n.hl ? '<div class="bridge">✎ Kommt in deinen Markierungen vor</div>' : ''}
+      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-prev>Vorschau</button><button class="btn sec" data-path>⇄ Verbindung</button><button class="btn sec" data-focus>Fokus</button><button class="btn sec" data-hide>Nicht vorschlagen</button></div>`;
   } else {
     const d = db.nodes[n.key];
     html = `<div class="st">${esc(n.title)}</div>
       <div class="sm">${d.desc ? esc(d.desc) + '<br>' : ''}${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)} ${clTag}</div>
-      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button>${db.hl && db.hl[n.key] ? `<button class="btn sec" data-notes>✎ ${db.hl[n.key].length} Markierung${db.hl[n.key].length > 1 ? 'en' : ''}</button>` : ''}</div>`;
+      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button><button class="btn sec" data-path>⇄ Verbindung</button>${db.hl && db.hl[n.key] ? `<button class="btn sec" data-notes>✎ ${db.hl[n.key].length} Markierung${db.hl[n.key].length > 1 ? 'en' : ''}</button>` : ''}</div>`;
+    const wds = wdOf(n.key);
+    if (wds.length && db.showWd) html += `<div class="nbh">Wikidata-Beziehungen</div><div class="wdl">${wds.slice(0, 12).map(e => { const o = e.a === n.key ? e.b : e.a, t = db.nodes[o] ? db.nodes[o].title : o; return `<button type="button" data-k="${esc(o)}">${e.a === n.key ? `<span>${esc(e.l)}</span> → <b>${esc(t)}</b>` : `<b>${esc(t)}</b> → <span>${esc(e.l)}</span> → hier`}</button>`; }).join('')}</div>`;
     const sug = localSug(n);
     if (sug.length) html += `<div class="nbh">Vorschläge von hier aus <span class="hint">(ungelesen, verlinkt aus diesem Artikel; Zahl = wie viele deiner Artikel darauf verlinken)</span></div>
       <div class="nb">${sug.map(x => `<button class="chip gh" data-pv="${esc(x.o)}">${esc(x.o)}${x.c > 1 ? ` <small>${x.c}</small>` : ''}</button>`).join('')}</div>`;
@@ -1651,6 +1683,7 @@ function select(n) {
   sh.querySelector('[data-open]').onclick = () => openTitle(n.lang, n.title, null);
   sh.querySelector('[data-close]').onclick = closeSheet;
   const nb2 = sh.querySelector('[data-notes]'); if (nb2) nb2.onclick = () => { notesFilter.q = n.title; $('notesQ').value = n.title; go('#notes'); };
+  const pb2 = sh.querySelector('[data-path]'); if (pb2) pb2.onclick = () => startPick(n);
   const pv = sh.querySelector('[data-prev]'); if (pv) pv.onclick = () => showPreview(n.lang, n.title);
   sh.querySelector('[data-focus]').onclick = () => {
     G.focus = G.focus === n.key ? null : n.key; G.hiCl = null; computeFocus(); select(n);
@@ -1663,7 +1696,7 @@ function select(n) {
   sh.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { const d = db.nodes[b.dataset.go]; if (d) openTitle(d.lang, d.title, null, n.key); });
 }
 function guardTap(el) { el.style.pointerEvents = 'none'; clearTimeout(el._g); el._g = setTimeout(() => { el.style.pointerEvents = ''; }, 450); }
-function closeSheet() { G.sel = null; clearTemp(); $('sheet').classList.remove('on'); requestDraw(); }
+function closeSheet() { G.sel = null; G.pick = null; clearTemp(); $('sheet').classList.remove('on'); requestDraw(); }
 
 /* ---------- highlights & notes ---------- */
 const HLC = { y: 'Gelb', g: 'Grün', b: 'Blau', r: 'Rot' };
@@ -1853,6 +1886,159 @@ function notesMarkdown() {
 }
 $('notesMd').onclick = () => download(`wikigraph-markierungen-${stamp()}.md`, notesMarkdown(), 'text/markdown');
 $('notesCopy').onclick = async () => { try { await navigator.clipboard.writeText(notesMarkdown()); toast('Markdown kopiert'); } catch (e) { toast('Kopieren nicht möglich'); } };
+
+/* ---------- "Wie hängen X und Y zusammen?" ---------- */
+async function linksOf(n) {
+  const d = db.nodes[n.key];
+  if (d && d.out) return new Set(resolvedOut(n.key, d));
+  const set = new Set(); let cont = {};
+  for (let i = 0; i < 4; i++) {
+    const r = await api(n.lang, Object.assign({ action: 'query', prop: 'links', titles: n.title, plnamespace: 0, pllimit: 'max', redirects: 1 }, cont));
+    ((r.query && r.query.pages) || []).forEach(p => (p.links || []).forEach(l => { if (!identCached(l.title)) set.add(resolve(K(n.lang, l.title))); }));
+    if (!r.continue) break; cont = r.continue;
+  }
+  return set;
+}
+async function backlinksOf(n) {
+  const set = new Set(); let cont = {};
+  for (let i = 0; i < 2; i++) {
+    const r = await api(n.lang, Object.assign({ action: 'query', list: 'backlinks', bltitle: n.title, blnamespace: 0, bllimit: 500 }, cont));
+    ((r.query && r.query.backlinks) || []).forEach(b => set.add(K(n.lang, b.title)));
+    if (!r.continue) break; cont = r.continue;
+  }
+  return set;
+}
+function startPick(n) {
+  G.pick = n;
+  $('sheet').innerHTML = `<div class="st">Verbindung finden</div><div class="sm">Von <b>${esc(n.title)}</b> aus. Tippe jetzt den zweiten Artikel im Graph an oder such ihn oben über die Lupe.</div><div class="sbtns"><button class="btn sec" data-x>Abbrechen</button></div>`;
+  $('sheet').querySelector('[data-x]').onclick = () => { G.pick = null; closeSheet(); };
+}
+async function findPath(A, B) {
+  const sh = $('sheet');
+  G.sel = A; clearTemp(); requestDraw();
+  sh.innerHTML = `<div class="st">${esc(A.title)} ⇄ ${esc(B.title)}</div><div class="loading" style="padding:18px">Suche Verbindungen über Wikipedia …</div>`;
+  sh.classList.add('on');
+  if (A.lang !== B.lang) { sh.innerHTML += '<div class="sm">Die beiden Artikel sind in verschiedenen Sprachen, das geht leider nicht.</div>'; return; }
+  let outA, outB, backA, backB;
+  try { [outA, outB, backA, backB] = await Promise.all([linksOf(A), linksOf(B), backlinksOf(A), backlinksOf(B)]); }
+  catch (e) { sh.innerHTML = `<div class="st">${esc(A.title)} ⇄ ${esc(B.title)}</div><div class="sm">Konnte Wikipedia nicht erreichen.</div>`; return; }
+  const skip = new Set([A.key, B.key, ...(db.hidden || [])]);
+  const rank = arr => arr.filter(k => !skip.has(k)).sort((x, y) => (db.nodes[y] ? 1 : 0) - (db.nodes[x] ? 1 : 0) || ((G.gc && G.gc.get(y) ? G.gc.get(y).c : 0) - (G.gc && G.gc.get(x) ? G.gc.get(x).c : 0)) || x.localeCompare(y));
+  const viaAB = rank([...outA].filter(k => backB.has(k))), viaBA = rank([...outB].filter(k => backA.has(k)));
+  const both = rank([...outA].filter(k => outB.has(k))), cites = rank([...backA].filter(k => backB.has(k)));
+  const dAB = outA.has(B.key), dBA = outB.has(A.key);
+  const chip = k => { const t = db.nodes[k] ? db.nodes[k].title : k.slice(k.indexOf(':') + 1); return `<button class="chip${db.nodes[k] ? '' : ' gh'}" data-pk="${esc(k)}">${db.nodes[k] ? '● ' : ''}${esc(t)}</button>`; };
+  const sec = (title, hint, list) => list.length ? `<div class="nbh">${title} <span class="hint">${hint}</span></div><div class="nb">${list.slice(0, 10).map(chip).join('')}${list.length > 10 ? `<span class="hint">+${list.length - 10} weitere</span>` : ''}</div>` : '';
+  let html = `<div class="st">${esc(A.title)} ⇄ ${esc(B.title)}</div>`;
+  html += `<div class="sm">${dAB && dBA ? 'Die beiden verlinken sich gegenseitig direkt.' : dAB ? `„${esc(A.title)}“ verlinkt direkt auf „${esc(B.title)}“.` : dBA ? `„${esc(B.title)}“ verlinkt direkt auf „${esc(A.title)}“.` : 'Kein direkter Link zwischen den beiden.'} ● = schon gelesen</div>`;
+  html += sec(`Über einen Zwischenschritt`, `(${esc(A.title)} → X → ${esc(B.title)})`, viaAB);
+  html += sec(`Rückwärts`, `(${esc(B.title)} → X → ${esc(A.title)})`, viaBA);
+  html += sec('Beide verlinken auf', '(gemeinsamer Bezugspunkt)', both);
+  html += sec('Verlinkt beide', '(Artikel, in denen beide vorkommen)', cites);
+  if (!viaAB.length && !viaBA.length && !both.length && !cites.length && !dAB && !dBA) html += '<div class="sm">Keine Verbindung über einen Zwischenschritt gefunden. Die beiden liegen in Wikipedia weit auseinander.</div>';
+  html += '<button class="shx" data-close aria-label="Schließen">✕</button>';
+  sh.innerHTML = html; sh.scrollTop = 0; guardTap(sh);
+  sh.querySelector('[data-close]').onclick = closeSheet;
+  sh.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => {
+    const k = b.dataset.pk, m = G.by.get(k);
+    if (m && !m.temp) { select(m); centerOn(m); } else showPreview(A.lang, db.nodes[k] ? db.nodes[k].title : k.slice(k.indexOf(':') + 1));
+  });
+  // show the best intermediate steps in the graph
+  const top = [...new Set([...viaAB, ...viaBA, ...both])].slice(0, 5);
+  top.forEach((k, i) => {
+    if (G.by.has(k)) { const m = G.by.get(k); [A, B].forEach(e => { if (!m.adj.has(e)) { const tl = { s: e.key, t: k, type: 'path', a: e, b: m, temp: true }; G.links.push(tl); G.phys && G.phys.push(tl); } }); return; }
+    const t = k.slice(k.indexOf(':') + 1), mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2, ang = i / Math.max(1, top.length) * 6.283;
+    const o = { key: k, title: t, lang: A.lang, ghost: true, temp: true, path: true, c: 1, from: [A.key], w: 0, cl: -1, x: mx + Math.cos(ang) * 40, y: my + Math.sin(ang) * 40, vx: 0, vy: 0, r: 5, adj: new Set([A, B]) };
+    G.nodes.push(o); G.by.set(k, o); A.adj.add(o); B.adj.add(o);
+    [A, B].forEach(e => { const tl = { s: e.key, t: k, type: 'path', a: e, b: o }; G.links.push(tl); G.phys && G.phys.push(tl); });
+  });
+  heat(.2); fitNodes([A, B, ...top.map(k => G.by.get(k)).filter(Boolean)]);
+}
+
+/* ---------- Wikidata relations between read articles ---------- */
+async function loadWikidata(quiet) {
+  const nodes = Object.entries(db.nodes).filter(([, n]) => n.qid);
+  if (nodes.length < 2) { if (!quiet) toast('Zu wenige Artikel mit Wikidata-ID'); return; }
+  const byQ = new Map(nodes.map(([k, n]) => [n.qid, k])), qs = [...byQ.keys()];
+  const edges = [];
+  try {
+    for (let i = 0; i < qs.length; i += 150) {
+      const vals = l => l.map(q => 'wd:' + q).join(' ');
+      const q = `SELECT ?a ?b ?pl WHERE { VALUES ?a { ${vals(qs.slice(i, i + 150))} } VALUES ?b { ${vals(qs)} } ?a ?d ?b . ?p wikibase:directClaim ?d . SERVICE wikibase:label { bd:serviceParam wikibase:language "de,en". ?p rdfs:label ?pl . } }`;
+      const r = await fetch('https://query.wikidata.org/sparql', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/sparql-results+json' }, body: 'query=' + encodeURIComponent(q) }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+      for (const b of r.results.bindings) {
+        const qa = b.a.value.split('/').pop(), qb = b.b.value.split('/').pop();
+        if (qa !== qb && byQ.has(qa) && byQ.has(qb)) edges.push({ a: byQ.get(qa), b: byQ.get(qb), l: b.pl ? b.pl.value : 'verbunden' });
+      }
+    }
+  } catch (e) { if (!quiet) toast('Wikidata gerade nicht erreichbar'); return; }
+  db.wd = { n: nodes.length, ts: Date.now(), edges };
+  save(); G.dirty = true;
+  if (view === 'graph') { rebuild(); heat(.25); }
+  if (!quiet) toast(edges.length ? edges.length + ' Wikidata-Beziehungen gefunden' : 'Keine Wikidata-Beziehungen zwischen deinen Artikeln');
+}
+function wdOf(key) { return ((db.wd && db.wd.edges) || []).filter(e => e.a === key || e.b === key); }
+/* refresh in the background when new articles with a Wikidata ID came in */
+setTimeout(() => { if (db.showWd && navigator.onLine && Object.values(db.nodes).filter(n => n.qid).length !== ((db.wd && db.wd.n) || 0)) loadWikidata(true); }, 5000);
+
+/* ---------- Obsidian vault export (.zip) ---------- */
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+async function exportVault() {
+  if (!window.JSZip) { try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'); } catch (e) { toast('Zip-Bibliothek nicht ladbar – bist du online?'); return; } }
+  if (G.dirty || !G.nodes.length) rebuild();
+  const zip = new JSZip(), dir = zip.folder('WikiGraph');
+  const keys = Object.keys(db.nodes), titleCount = {};
+  keys.forEach(k => { const t = db.nodes[k].title; titleCount[t] = (titleCount[t] || 0) + 1; });
+  const fname = k => { const n = db.nodes[k]; let t = n.title.replace(/[\\/:*?"<>|#^\[\]]/g, '-'); if (titleCount[n.title] > 1) t += ' (' + n.lang + ')'; return t; };
+  const wl = k => db.nodes[k] ? `[[${fname(k)}]]` : `[[${k.slice(k.indexOf(':') + 1).replace(/[\[\]|#^]/g, '-')}]]`;
+  const an = analyze(Infinity);
+  const nb = new Map(keys.map(k => [k, { nav: new Set(), sem: new Set() }]));
+  for (const l of an.links) { const t = l.type === 'nav' ? 'nav' : 'sem'; nb.get(l.s)[t].add(l.t); nb.get(l.t)[t].add(l.s); }
+  const day = t => new Date(t).toISOString().slice(0, 10);
+  for (const k of keys) {
+    const n = db.nodes[k], gnode = G.by.get(k), cl = gnode && gnode.cl >= 0 ? G.clusters[gnode.cl] : null;
+    let md = `---\nwikipedia: https://${n.lang}.wikipedia.org/wiki/${encodeURIComponent(n.title.replace(/ /g, '_'))}\n`;
+    if (n.qid) md += `wikidata: ${n.qid}\n`;
+    md += `gelesen: ${n.visits.length}\nzuerst: ${day(n.first)}\nzuletzt: ${day(n.last || n.first)}\n`;
+    if (cl) md += `thema: "${cl.name.replace(/"/g, "'")}"\n`;
+    md += `tags: [wikigraph${cl ? ', thema/' + cl.name.replace(/[^\p{L}\p{N}_-]+/gu, '-') : ''}]\n---\n\n# ${n.title}\n`;
+    if (n.desc) md += `\n*${n.desc}*\n`;
+    const hs = (db.hl || {})[k];
+    if (hs && hs.length) {
+      md += `\n## Markierungen\n`;
+      for (const h of hs.slice().sort((a, b) => (a.start || 0) - (b.start || 0))) {
+        md += `\n> ${h.text.replace(/\n+/g, ' ')}\n`;
+        if (h.note) md += `\n${h.note}\n`;
+        if (h.links && h.links.length) md += `\nLinks: ${h.links.map(t => wl(resolve(K(n.lang, t)))).join(', ')}\n`;
+      }
+    }
+    const v = nb.get(k);
+    const navOut = [...new Set(db.edges.filter(e => e.f === k).map(e => e.t))].filter(t => db.nodes[t]);
+    const wds = wdOf(k);
+    if (navOut.length || v.sem.size || v.nav.size || wds.length) {
+      md += `\n## Verbindungen\n`;
+      if (navOut.length) md += `- weitergelesen zu:: ${navOut.map(wl).join(', ')}\n`;
+      const back = [...v.nav].filter(t => !navOut.includes(t));
+      if (back.length) md += `- gekommen von:: ${back.map(wl).join(', ')}\n`;
+      if (v.sem.size) md += `- verlinkt:: ${[...v.sem].map(wl).join(', ')}\n`;
+      for (const e of wds) md += e.a === k ? `- ${e.l}:: ${wl(e.b)}\n` : `- (${e.l} von):: ${wl(e.a)}\n`;
+    }
+    const sug = gnode ? localSug(gnode).slice(0, 6) : [];
+    if (sug.length) md += `\n## Vorschläge\n${sug.map(x => `- ${wl(x.k)}${x.c > 1 ? ` (${x.c} Links)` : ''}`).join('\n')}\n`;
+    dir.file(fname(k) + '.md', md);
+  }
+  let idx = `# WikiGraph\n\nExport vom ${new Date().toLocaleDateString('de-DE')} · ${keys.length} Artikel\n`;
+  for (const c of G.clusters) idx += `\n## ${c.name}\n${c.members.map(m => '- ' + wl(m.key)).join('\n')}\n`;
+  const rest = keys.filter(k => { const g = G.by.get(k); return !g || g.cl < 0; });
+  if (rest.length) idx += `\n## Ohne Thema\n${rest.map(k => '- ' + wl(k)).join('\n')}\n`;
+  dir.file('_WikiGraph Index.md', idx);
+  const blob = await zip.generateAsync({ type: 'blob' });
+  try {
+    const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `WikiGraph-Vault-${stamp()}.zip`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000); toast('Vault exportiert');
+  } catch (e) { toast('Download nicht möglich'); }
+}
+$('notesVault').onclick = exportVault;
 
 /* ---------- more: history, stats, export ---------- */
 function renderMore() {
