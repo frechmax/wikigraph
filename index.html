@@ -649,6 +649,29 @@ function renderMini() {
     setTimeout(() => { sw.style.transition = ''; }, 220);
   });
 })();
+/* outlinks often point to redirects ("Walt Disney World" -> "Walt Disney World Resort"); learn them so links match */
+async function learnRedirects(lang, t) {
+  let cont = {}, changed = false;
+  try {
+    for (let i = 0; i < 5; i++) {
+      const d = await api(lang, Object.assign({ action: 'query', generator: 'links', titles: t, gplnamespace: 0, gpllimit: 'max', redirects: 1, prop: 'info' }, cont));
+      const q = d.query || {};
+      (q.normalized || []).forEach(r => { if (r.from !== r.to) { db.alias[K(lang, r.from)] = r.to; changed = true; } });
+      (q.redirects || []).forEach(r => { if (r.from !== r.to) { db.alias[K(lang, r.from)] = r.to; changed = true; } });
+      if (!d.continue) break;
+      cont = d.continue;
+    }
+    const n = db.nodes[K(lang, t)]; if (n) n.rr = 1;
+    save();
+    if (changed) { G.dirty = true; if (view === 'graph') { rebuild(); heat(.2); } }
+  } catch (e) {}
+}
+/* backfill for articles read before this existed: one every 1.5 s */
+setTimeout(function backfill() {
+  const n = Object.values(db.nodes).find(x => !x.rr && x.out);
+  if (!n || !navigator.onLine) return;
+  learnRedirects(n.lang, n.title).finally(() => setTimeout(backfill, 1500));
+}, 3000);
 function recordVisit(lang, t, from, out, props) {
   const key = K(lang, t), now = Date.now();
   let n = db.nodes[key];
@@ -656,7 +679,7 @@ function recordVisit(lang, t, from, out, props) {
   const lastV = n.visits[n.visits.length - 1] || 0;
   if (now - lastV > 5 * 60e3) n.visits.push(now);
   n.last = now;
-  if (out) n.out = out.slice(0, 1200);
+  if (out) { n.out = out.slice(0, 1200); learnRedirects(lang, t); }
   if (props && props.wikibase_item) n.qid = props.wikibase_item;
   if (props && props['wikibase-shortdesc']) n.desc = props['wikibase-shortdesc'];
   if (from) {
@@ -854,6 +877,7 @@ async function showPreview(lang, title) {
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Vorschau</div><div class="pv"><div class="pvt">${esc(title)}</div><div class="loading" style="padding:16px">Lädt …</div></div>`;
   $('pop').classList.add('on');
+  guardTap($('pop'));
   let d = null;
   try { d = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`).then(r => r.ok ? r.json() : null); } catch (e) {}
   if (tok !== pvTok) return;
@@ -1422,7 +1446,9 @@ function select(n) {
   const rn = nb.filter(m => !m.ghost);
   if (rn.length) html += `<div class="nbh">${n.ghost ? 'Verlinkt von' : 'Gelesene Nachbarn'}</div><div class="nb">${rn.map(m => `<button class="chip" data-k="${esc(m.key)}">${esc(m.title)}</button>`).join('')}</div>`;
   html += '<button class="shx" data-close aria-label="Schließen">✕</button>';
+  const wasOpen = sh.classList.contains('on');
   sh.innerHTML = html; sh.classList.add('on'); sh.scrollTop = 0;
+  if (!wasOpen || gest) guardTap(sh);
   sh.querySelector('[data-open]').onclick = () => openTitle(n.lang, n.title, null);
   sh.querySelector('[data-close]').onclick = closeSheet;
   const pv = sh.querySelector('[data-prev]'); if (pv) pv.onclick = () => showPreview(n.lang, n.title);
@@ -1435,6 +1461,7 @@ function select(n) {
   sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
   sh.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => showPreview(n.lang, b.dataset.pv));
 }
+function guardTap(el) { el.style.pointerEvents = 'none'; clearTimeout(el._g); el._g = setTimeout(() => { el.style.pointerEvents = ''; }, 450); }
 function closeSheet() { G.sel = null; clearTemp(); $('sheet').classList.remove('on'); requestDraw(); }
 
 /* ---------- more: history, stats, export ---------- */
