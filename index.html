@@ -409,6 +409,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 /* ---------- storage ---------- */
 const S_KEY = 'wikigraph.v1';
 const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {}, hidden: [], showLocal: true, rank: { links: true, cs: true, hl: true, fair: true } });
+const VW = () => Object.assign({ start: 'local', imp: 0, edgeK: 3, bubbles: true, fade: true }, db.view || {});
 const RK = () => Object.assign({ links: true, cs: true, hl: true, fair: true }, db.rank || {});
 /* identifier / meta articles that are linked from citations, not topics */
 const IDENT = new Set([
@@ -1196,7 +1197,9 @@ function analyzeRaw(tMax) {
       const j = idx.get(k);
       if (j !== undefined) {
         const id = ai < j ? ai * N + j : j * N + ai;
-        if (!pairs.has(id)) { const nl = { s: a, t: k, type: 'sem', c: 1 }; pairs.set(id, nl); links.push(nl); }
+        const ex = pairs.get(id);
+        if (!ex) { const nl = { s: a, t: k, type: 'sem', c: 1, w: 1 }; pairs.set(id, nl); links.push(nl); }
+        else if (ex.type === 'sem' && ex.s !== a) ex.w = (ex.w || 1) + 1;   // linked in both directions
       } else {
         let g = gc.get(k);
         if (!g) { g = { key: k, title: k.slice(pre.length), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
@@ -1211,7 +1214,8 @@ function analyzeRaw(tMax) {
     const pre = n.lang + ':';
     for (const [tg, c] of n.cs.l) {
       const k = resolve(pre + tg);
-      if (k === a || idx.has(k) || hidden.has(k) || identCached(tg)) continue;
+      if (idx.has(k) && k !== a) { const j = idx.get(k), l = pairs.get(ai < j ? ai * N + j : j * N + ai); if (l) l.w = (l.w || 1) + 5 * c / n.cs.t; continue; }
+      if (k === a || hidden.has(k) || identCached(tg)) continue;
       let g = gc.get(k);
       if (!g) { g = { key: k, title: k.slice(pre.length), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
       const p = c / n.cs.t;
@@ -1233,7 +1237,7 @@ const G = { nodes: [], links: [], by: new Map(), cam: { x: 0, y: 0, k: 1 }, sel:
   tMax: Infinity, dirty: true, focusKey: null, W: 0, H: 0, dpr: 1, raf: 0, fitted: false, clusters: [], hiCl: null, focus: null, focusDepth: 1, focusSet: null, anim: null };
 const PAL_L = ['#2f5d8a', '#b5543c', '#3f8a5b', '#8a5aa8', '#c08a2b', '#2f8a8a', '#a8466e', '#6b7a2f'];
 const PAL_D = ['#86b4e3', '#e58d75', '#79c493', '#c09ae0', '#e5b45f', '#6cc6c6', '#e081a8', '#b3c46b'];
-const pal = i => (document.documentElement.dataset.theme === 'dark' ? PAL_D : PAL_L)[i];
+const pal = i => (document.documentElement.dataset.theme === 'dark' ? PAL_D : PAL_L)[((i % 8) + 8) % 8];
 function sizeCanvas() {
   const top = $('gbar').offsetHeight;
   const W = cv.parentElement.clientWidth, H = cv.parentElement.clientHeight - top;
@@ -1265,7 +1269,7 @@ function computeClusters(nodes, links) {
   G.clusters = [];
   nodes.forEach(n => { if (!n.ghost) n.cl = -1; });
   cl.forEach(members => {
-    if (members.length < 2 || G.clusters.length >= 8) return;
+    if (members.length < 2 || G.clusters.length >= 40) return;
     const id = G.clusters.length, top = members.slice().sort((a, b) => b.w - a.w)[0];
     members.forEach(n => n.cl = id);
     G.clusters.push({ id, name: top.title, members });
@@ -1322,7 +1326,13 @@ function rebuild() {
   };
   const nbr = new Map();
   for (const l of an.links) { if (!nbr.has(l.s)) nbr.set(l.s, l.t); if (!nbr.has(l.t)) nbr.set(l.t, l.s); }
-  const visSorted = an.vis.slice().sort((a, b) => db.nodes[a].first - db.nodes[b].first);
+  const V = VW(), curK = current ? K(current.lang, current.title) : null;
+  // importance: hide "fleeting" articles (opened once, nothing marked, never read on from)
+  const outNav = new Map(); for (const e of db.edges) if (e.ts <= G.tMax) outNav.set(e.f, (outNav.get(e.f) || 0) + 1);
+  const keep = k => { if (!V.imp || k === curK) return true; const n = db.nodes[k], hl = ((db.hl || {})[k] || []).length, on = outNav.get(k) || 0;
+    return V.imp === 1 ? (n.visits.length > 1 || hl > 0 || on > 0) : (n.visits.length > 1 || hl > 0 || on > 1); };
+  const visSorted = an.vis.filter(keep).sort((a, b) => db.nodes[a].first - db.nodes[b].first);
+  G.hiddenCount = an.vis.length - visSorted.length;
   for (const k of visSorted) {
     const n = db.nodes[k];
     const p = place(k, nbr.get(k));
@@ -1330,14 +1340,31 @@ function rebuild() {
     o.r = 6 + Math.sqrt(o.w) * 3.2;
     nodes.push(o); by.set(k, o);
   }
-  const links = an.links.filter(l => G.sem || l.type === 'nav' || l.type === 'wd').map(l => ({ ...l, a: by.get(l.s), b: by.get(l.t) }));
+  const allL = an.links.filter(l => by.has(l.s) && by.has(l.t)).map(l => ({ ...l, a: by.get(l.s), b: by.get(l.t) }));
   // topics are computed on all connections (independent of the display toggles)
-  computeClusters(nodes.slice(), an.links.map(l => ({ type: l.type, a: by.get(l.s), b: by.get(l.t) })));
+  computeClusters(nodes.slice(), allL);
+  // thin out: per article only its strongest 'linked'/Wikidata connections; the rest appears when it is selected
+  let links = allL.filter(l => G.sem || l.type === 'nav' || l.type === 'wd');
+  G.extraLinks = [];
+  if (V.edgeK) {
+    const per = new Map();
+    for (const l of links) if (l.type !== 'nav') { [l.a, l.b].forEach(n => { if (!per.has(n)) per.set(n, []); per.get(n).push(l); }); }
+    const keepL = new Set();
+    for (const arr of per.values()) arr.sort((x, y) => (y.w || 1) - (x.w || 1)).slice(0, V.edgeK).forEach(l => keepL.add(l));
+    G.extraLinks = links.filter(l => l.type !== 'nav' && !keepL.has(l));
+    links = links.filter(l => l.type === 'nav' || keepL.has(l));
+  }
+  // links between topics, for the zoomed-out bubble view
+  { const ce = new Map(); for (const l of allL) { const a = l.a.cl, b = l.b.cl; if (a < 0 || b < 0 || a === b) continue; const id = a < b ? a + '|' + b : b + '|' + a; ce.set(id, (ce.get(id) || 0) + 1); }
+    G.clEdges = [...ce].map(([id, n]) => { const [a, b] = id.split('|').map(Number); return { a, b, n }; }); }
   if (G.ghost) {
     const max = ghostLimit(an.vis.length);
     // each suggestion belongs to the topic that contributes most of its (weighted) links
     const groups = new Map();
-    for (const g of an.ghosts) {
+    for (const g0 of an.ghosts) {
+      const idxs = g0.from.map((f, i) => by.has(f) ? i : -1).filter(i => i >= 0);
+      if (!idxs.length) continue;                       // only suggestions from articles that are shown
+      const g = Object.assign({}, g0, { from: idxs.map(i => g0.from[i]), fw: idxs.map(i => g0.fw[i]) });
       const sc = new Map();
       g.from.forEach((f, i) => { const m = by.get(f); const c = m ? m.cl : -1; sc.set(c, (sc.get(c) || 0) + g.fw[i]); });
       let cl = -1, bw = -1; for (const [c, w] of sc) if (w > bw || (w === bw && c > cl)) { cl = c; bw = w; }
@@ -1349,7 +1376,7 @@ function rebuild() {
     const qs = [...groups.values()].filter(q => q.length).sort((a, b) => b[0].s - a[0].s);
     let picked = [];
     if (RK().fair) while (picked.length < max && qs.some(q => q.length)) for (const q of qs) { if (picked.length >= max) break; if (q.length) picked.push(q.shift()); }
-    else picked = an.ghosts.slice(0, max);
+    else picked = [...groups.values()].flat().sort((a, b) => b.s - a.s).slice(0, max);
     for (const g of picked) {
       const p = place(g.key, g.from[0]);
       const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cp: g.cp || 0, cl: g.cl, hl: g.hl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
@@ -1362,6 +1389,7 @@ function rebuild() {
   G.nodes = nodes; G.links = links; G.by = by; G.gc = an.gc; G.ghostMax = G.ghost ? Math.min(ghostLimit(an.vis.length), an.ghosts.length) : 0; G.ghostAvail = an.ghosts.length;
   nodes.forEach(n => n.adj = new Set());
   links.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
+  G.extraLinks.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
   if (G.hiCl != null && !G.clusters[G.hiCl]) G.hiCl = null;
   if (G.sel && !by.has(G.sel.key)) closeSheet(); else if (G.sel) G.sel = by.get(G.sel.key);
   if (G.focus && !by.has(G.focus)) G.focus = null;
@@ -1488,6 +1516,48 @@ function nodeColor(n) {
   if (G.color === 'recent') return TC.accent;
   return n.cl >= 0 ? pal(n.cl) : TC.sem;
 }
+function bubbleT() {
+  const V = VW();
+  if (!V.bubbles || G.clusters.length < 2 || G.focusSet || G.sel || G.nodes.filter(n => !n.ghost).length < 30) return 0;
+  return Math.max(0, Math.min(1, (.42 - G.cam.k) / .14));
+}
+function bubbleGeo() {
+  return G.clusters.map(c => {
+    let x = 0, y = 0; c.members.forEach(m => { x += m.x; y += m.y; }); x /= c.members.length; y /= c.members.length;
+    return { c, x, y, r: 26 + Math.sqrt(c.members.length) * 22 };
+  });
+}
+function drawBubbles(t) {
+  const geo = bubbleGeo(), k = G.cam.k;
+  ctx.setLineDash([]);
+  for (const e of G.clEdges || []) {
+    const a = geo[e.a], b = geo[e.b]; if (!a || !b) continue;
+    ctx.globalAlpha = .35 * t; ctx.strokeStyle = TC.sem; ctx.lineWidth = Math.min(10, 1 + Math.log2(1 + e.n) * 1.6) / k;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  for (const g of geo) {
+    ctx.globalAlpha = .28 * t; ctx.fillStyle = pal(g.c.id); ctx.beginPath(); ctx.arc(g.x, g.y, g.r, 0, 6.2832); ctx.fill();
+    ctx.globalAlpha = .9 * t; ctx.strokeStyle = pal(g.c.id); ctx.lineWidth = 2 / k; ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+function drawBubbleLabels(t) {
+  const { dpr } = G; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const placed = [];
+  for (const g of bubbleGeo().sort((a, b) => b.c.members.length - a.c.members.length)) {
+    const [sx, sy] = toScreen(g.x, g.y);
+    const name = g.c.name.length > 22 ? g.c.name.slice(0, 20) + '…' : g.c.name;
+    ctx.font = '600 13px -apple-system,Segoe UI,Roboto,sans-serif';
+    const w = ctx.measureText(name).width, r = [sx - w / 2 - 3, sy - 10, sx + w / 2 + 3, sy + 22];
+    if (placed.some(q => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1])) continue;
+    placed.push(r);
+    ctx.globalAlpha = t; ctx.lineWidth = 3; ctx.strokeStyle = TC.bg; ctx.strokeText(name, sx, sy); ctx.fillStyle = TC.ink; ctx.fillText(name, sx, sy);
+    ctx.font = '11px -apple-system,Segoe UI,Roboto,sans-serif'; ctx.fillStyle = TC.ink; ctx.globalAlpha = .7 * t;
+    ctx.fillText(g.c.members.length + ' Artikel', sx, sy + 15);
+  }
+  ctx.globalAlpha = 1;
+}
 function draw() {
   const { W, H, dpr, cam } = G;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1497,9 +1567,16 @@ function draw() {
   const sel = G.sel, k = cam.k, hc = G.hiCl;
   const lit = n => sel ? (n === sel || sel.adj.has(n)) : hc != null ? n.cl === hc : true;
   const curKey = current ? K(current.lang, current.title) : null;
-  const now = Date.now();
+  const now = Date.now(), V = VW();
+  // semantic zoom: far out, topics become bubbles
+  const bt = bubbleT();
+  const nodeA = 1 - bt;
+  if (bt > 0) drawBubbles(bt);
+  if (nodeA <= 0.02) { drawBubbleLabels(bt); return; }
+  ctx.globalAlpha = 1;
   // links, batched per style (one stroke per group instead of one per link)
   const grp = {};
+  if (sel) for (const l of G.extraLinks || []) if (l.a === sel || l.b === sel) { const g = l.type + '1'; (grp[g] = grp[g] || []).push(l); }
   const [vx0, vy0] = toWorld(-50, -50), [vx1, vy1] = toWorld(W + 50, H + 50);
   for (const l of G.links) {
     if (!shown(l.a) || !shown(l.b)) continue;
@@ -1510,7 +1587,7 @@ function draw() {
   }
   for (const g in grp) {
     const L = grp[g], l0 = L[0], on = g.charAt(l0.type.length) === '1';
-    ctx.globalAlpha = on ? 1 : .08;
+    ctx.globalAlpha = (on ? 1 : .08) * nodeA;
     if (l0.type === 'nav') { ctx.strokeStyle = TC.accent; ctx.lineWidth = Math.min(4, 1.2 + Math.min(3, l0.c) * .5) / Math.sqrt(k); ctx.setLineDash([]); }
     else if (l0.type === 'sem') { ctx.strokeStyle = TC.sem; ctx.lineWidth = 1 / Math.sqrt(k); ctx.setLineDash([5 / k, 4 / k]); }
     else if (l0.type === 'wd') { ctx.strokeStyle = TC.accent2; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([]); }
@@ -1537,6 +1614,8 @@ function draw() {
     if (n.x < vx0 - 20 || n.x > vx1 + 20 || n.y < vy0 - 20 || n.y > vy1 + 20) continue;
     let al = lit(n) ? 1 : .15;
     if (G.color === 'recent' && !n.ghost) al *= Math.max(.18, 1 - (now - n.last) / (30 * 864e5));
+    else if (V.fade && !n.ghost && n.key !== curKey) al *= Math.max(.4, 1 - (now - n.last) / (180 * 864e5));
+    al *= nodeA;
     ctx.globalAlpha = al;
     ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 6.2832);
     if (n.ghost) {
@@ -1551,7 +1630,8 @@ function draw() {
   }
   ctx.globalAlpha = 1;
   // labels in screen space, most important first, no overlaps
-  if (!G.lbl) return;
+  if (bt > 0) { drawBubbleLabels(bt); }
+  if (!G.lbl || nodeA < .5) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   const cand = [];
@@ -1607,13 +1687,18 @@ function graphEnter() {
     fitNodes(G.nodes, 2.2, true); G.fitted = true;
   }
   if (G.focusKey && G.by.has(G.focusKey)) { const n = G.by.get(G.focusKey); select(n); centerOn(n); }
+  else if (VW().start === 'local' && current) {
+    // open as local graph around the article you're reading (only once per article, so "✕" sticks)
+    const ck = K(current.lang, current.title);
+    if (G.localFor !== ck && G.by.has(ck)) { G.localFor = ck; G.focus = ck; G.focusDepth = 2; G.hiCl = null; computeFocus(); fitNodes([...G.focusSet], 1.6, true); }
+  }
   G.focusKey = null;
   loop();
 }
 window.addEventListener('resize', () => { if (view === 'graph') { sizeCanvas(); requestDraw(); } });
 
 /* header buttons */
-$('gFit').onclick = () => { G.hiCl = null; closeSheet(); renderGraphHeader(analyze(G.tMax)); fit(); };
+$('gFit').onclick = () => { G.hiCl = null; G.focus = null; computeFocus(); closeSheet(); renderGraphHeader(analyze(G.tMax)); fit(); };
 $('gHere').onclick = () => {
   const n = current && G.by.get(K(current.lang, current.title));
   if (!n) { toast(current ? 'Aktueller Artikel ist gerade nicht im Graph sichtbar' : 'Noch kein Artikel geöffnet'); return; }
@@ -1646,6 +1731,13 @@ $('gFilter').onclick = () => {
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Ansicht</div>
     <div class="frow">${chip('ghost', G.ghost, 'Vorschläge')}${chip('sem', G.sem, 'Querverbindungen')}${chip('lbl', G.lbl, 'Labels')}${chip('wd', !!db.showWd, 'Wikidata-Beziehungen')}</div>
+    <div class="flab">Beim Öffnen zeigen</div>
+    <div class="frow">${chip('v:start:local', VW().start === 'local', 'Lokal um aktuellen Artikel')}${chip('v:start:all', VW().start !== 'local', 'Gesamten Graph')}</div>
+    <div class="flab">Artikel zeigen ${G.hiddenCount ? `<span class="hint">(${G.hiddenCount} ausgeblendet)</span>` : ''}</div>
+    <div class="frow">${chip('v:imp:0', !VW().imp, 'Alle')}${chip('v:imp:1', VW().imp === 1, 'Ohne flüchtige')}${chip('v:imp:2', VW().imp === 2, 'Nur Kern')}</div>
+    <div class="flab">Querverbindungen pro Artikel</div>
+    <div class="frow">${chip('v:edgeK:3', VW().edgeK === 3, 'Stärkste 3')}${chip('v:edgeK:5', VW().edgeK === 5, 'Stärkste 5')}${chip('v:edgeK:0', !VW().edgeK, 'Alle')}</div>
+    <div class="frow" style="margin-top:8px">${chip('v:bubbles', VW().bubbles, 'Themen-Blasen beim Herauszoomen')}${chip('v:fade', VW().fade, 'Lange nicht Gelesenes verblassen')}</div>
     <div class="flab">Vorschläge bewerten nach</div>
     <div class="frow">${chip('r:cs', RK().cs, 'Clickstream (Weiterklicks)')}${chip('r:links', RK().links, 'Links deiner Artikel')}${chip('r:hl', RK().hl, 'Markierungen')}</div>
     <div class="flab">Plätze verteilen</div>
@@ -1659,7 +1751,8 @@ $('gFilter').onclick = () => {
     <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
     <div class="flab">Legende</div>
     <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border-color:var(--accent2)"></i>Wikidata-Beziehung (z. B. „Teil von“)</div><div><i style="border-color:var(--ink);border-top-style:dashed"></i>gefundener Verbindungsweg</div></div>
-    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben). Bei „Fair nach Themen“ werden die Plätze reihum auf deine Themen verteilt, damit kein stark vernetztes Thema alles belegt; bei „Beste insgesamt“ zählt nur die Punktzahl. Welche Faktoren in die Punktzahl eingehen, stellst du oben unter „Vorschläge bewerten nach“ ein. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
+    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben). Bei „Fair nach Themen“ werden die Plätze reihum auf deine Themen verteilt, damit kein stark vernetztes Thema alles belegt; bei „Beste insgesamt“ zählt nur die Punktzahl. Welche Faktoren in die Punktzahl eingehen, stellst du oben unter „Vorschläge bewerten nach“ ein. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>
+    <p class="fnote"><b>Übersicht bei vielen Artikeln:</b> Weit herausgezoomt werden Themen zu Blasen (Größe = Anzahl Artikel, Linien = Verbindungen zwischen Themen); antippen zoomt hinein. „Flüchtig“ = nur einmal geöffnet, nichts markiert, nicht weitergelesen. „Nur Kern“ = mehrfach gelesen, markiert oder mehrfach weitergelesen. Bei den Querverbindungen bleiben pro Artikel die stärksten sichtbar (gegenseitig verlinkt und oft geklickt zählt mehr); alle anderen erscheinen, wenn du den Artikel antippst.</p>`;
   $('pop').classList.add('on');
   const gnLabel = () => { $('gnv').textContent = (G.ghostMax || 0) + ' von ' + (G.ghostAvail || 0); };
   gnLabel();
@@ -1671,6 +1764,15 @@ $('gFilter').onclick = () => {
   $('gnAuto').onclick = () => { db.ghostN = null; save(); $('gnAuto').classList.add('on'); rebuild(); heat(.25); $('gn').value = G.ghostMax; gnLabel(); };
   pb.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
     const t = b.dataset.t;
+    if (t.startsWith('v:')) {
+      const [, f, val] = t.split(':'), Vv = VW();
+      if (val === undefined) { Vv[f] = !Vv[f]; b.classList.toggle('on', Vv[f]); }
+      else { Vv[f] = f === 'start' ? val : +val; pb.querySelectorAll(`[data-t^="v:${f}:"]`).forEach(x => x.classList.toggle('on', x === b)); }
+      db.view = Vv; save();
+      if (f === 'start') { G.localFor = null; if (val === 'all') { G.focus = null; computeFocus(); } }
+      if (f === 'imp' || f === 'edgeK') { rebuild(); heat(.3); }
+      requestDraw(); return;
+    }
     if (t.startsWith('r:')) {
       const R = RK(), f = t.slice(2);
       if (R[f] && ['cs', 'links', 'hl'].filter(x => R[x]).length === 1) { toast('Mindestens ein Faktor muss an bleiben'); return; }
@@ -1709,6 +1811,7 @@ const ptrs = new Map(); let gest = null, lastTap = null;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 function hit(sx, sy) {
+  if (bubbleT() > .5) return null;
   const [wx, wy] = toWorld(sx, sy);
   let best = null, bd = Infinity;
   for (const n of G.nodes) {
@@ -1779,6 +1882,11 @@ function tap(sx, sy, n) {
     return;
   }
   lastTap = { t: now, x: sx, y: sy };
+  if (!n && bubbleT() > .5) {
+    const [wx, wy] = toWorld(sx, sy);
+    const g = bubbleGeo().filter(g => Math.hypot(g.x - wx, g.y - wy) < g.r).sort((a, b) => a.r - b.r)[0];
+    if (g) { G.hiCl = g.c.id; renderGraphHeader(analyze(G.tMax)); fitNodes(g.c.members, 1.2); return; }
+  }
   if (n) { select(n); centerOn(n, G.cam.k); } else { closeSheet(); if (G.hiCl != null) { G.hiCl = null; renderGraphHeader(analyze(G.tMax)); } }
 }
 
