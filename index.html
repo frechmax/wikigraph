@@ -1290,21 +1290,15 @@ function rebuild() {
       g.from.forEach((f, i) => { const m = by.get(f); const c = m ? m.cl : -1; sc.set(c, (sc.get(c) || 0) + g.fw[i]); });
       let cl = -1, bw = -1; for (const [c, w] of sc) if (w > bw || (w === bw && c > cl)) { cl = c; bw = w; }
       g.cl = cl;
-      const cls = new Set(g.from.map(f => { const m = by.get(f); return m ? m.cl : -1; }).filter(c => c >= 0));
-      g.bridge = cls.size >= 2 ? [...cls] : null;
       if (!groups.has(cl)) groups.set(cl, []);
       groups.get(cl).push(g);           // already sorted by score
     }
     // fair share: pick round-robin across topics, strongest topic first in each round
-    // bridges between two of your topics get reserved places (serendipity instead of "more of the same")
-    const bridges = an.ghosts.filter(g => g.bridge).sort((a, b) => b.s * b.bridge.length - a.s * a.bridge.length).slice(0, max ? Math.max(1, Math.round(max / 4)) : 0);
-    const bset = new Set(bridges);
-    for (const q of groups.values()) for (let i = q.length - 1; i >= 0; i--) if (bset.has(q[i])) q.splice(i, 1);
-    const qs = [...groups.values()].filter(q => q.length).sort((a, b) => b[0].s - a[0].s), picked = bridges.slice();
+    const qs = [...groups.values()].filter(q => q.length).sort((a, b) => b[0].s - a[0].s), picked = [];
     while (picked.length < max && qs.some(q => q.length)) for (const q of qs) { if (picked.length >= max) break; if (q.length) picked.push(q.shift()); }
     for (const g of picked) {
       const p = place(g.key, g.from[0]);
-      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cp: g.cp || 0, cl: g.cl, bridge: g.bridge, hl: g.hl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
+      const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cp: g.cp || 0, cl: g.cl, hl: g.hl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
       nodes.push(o); by.set(g.key, o);
       for (const f of g.from) links.push({ s: f, t: g.key, type: 'ghost', a: by.get(f), b: o });
     }
@@ -1493,10 +1487,6 @@ function draw() {
     ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 6.2832);
     if (n.ghost) {
       ctx.fillStyle = TC.bg; ctx.fill(); ctx.strokeStyle = n.path ? TC.ink : n.cl >= 0 && G.color === 'topic' ? pal(n.cl) : TC.ghost; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]);
-      if (n.bridge) { // bridge: second ring, split in the colours of the connected topics
-        const bs = n.bridge.slice(0, 4), seg = 6.2832 / bs.length;
-        bs.forEach((c, i) => { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 3.5 / k, i * seg, (i + 1) * seg); ctx.strokeStyle = pal(c); ctx.lineWidth = 2.4 / k; ctx.stroke(); });
-      }
       if (n.hl) { ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(1.6, n.r * .35), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); }
     }
     else { ctx.fillStyle = nodeColor(n); ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
@@ -1611,7 +1601,7 @@ $('gFilter').onclick = () => {
     <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
     <div class="flab">Legende</div>
     <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border-color:var(--accent2)"></i>Wikidata-Beziehung (z. B. „Teil von“)</div><div><i style="border-color:var(--ink);border-top-style:dashed"></i>gefundener Verbindungsweg</div></div>
-    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben), reihum fair verteilt auf deine Themen, damit kein stark vernetztes Thema alles belegt. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Ein Viertel der Plätze ist für <b>Brücken</b> reserviert: Vorschläge, die zwei verschiedene deiner Themen verbinden, erkennbar am zweifarbigen Außenring. Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
+    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben), reihum fair verteilt auf deine Themen, damit kein stark vernetztes Thema alles belegt. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
   $('pop').classList.add('on');
   const gnLabel = () => { $('gnv').textContent = (G.ghostMax || 0) + ' von ' + (G.ghostAvail || 0); };
   gnLabel();
@@ -1737,7 +1727,6 @@ function select(n) {
   if (n.ghost) {
     html = `<div class="st">${esc(n.title)}</div>
       <div class="sm">${n.path ? 'Zwischenschritt auf dem gefundenen Verbindungsweg. Noch nicht gelesen.' : `Noch nicht gelesen. ${n.c === 1 ? 'Einer' : n.c} deiner gelesenen Artikel ${n.c === 1 ? 'verlinkt' : 'verlinken'} hierher: <b>${n.from.map(k => esc(db.nodes[k] ? db.nodes[k].title : k)).join(', ')}</b>`} ${clTag}</div>
-      ${n.bridge ? `<div class="bridge">⇄ Brücke zwischen ${n.bridge.map(c => G.clusters[c] ? `<span class="cltag"><i style="background:${pal(c)}"></i>${esc(G.clusters[c].name)}</span>` : '').join(' und ')}</div>` : ''}
       ${n.hl ? '<div class="bridge">✎ Kommt in deinen Markierungen vor</div>' : ''}
       ${(() => { const best = n.from.map(f => [f, db.nodes[f] ? csP(db.nodes[f], n.key) : 0]).sort((a, b) => b[1] - a[1])[0]; return best && best[1] >= .005 ? `<div class="bridge">↗ ${Math.round(best[1] * 100) || '<1'} % der Leser von „${esc(db.nodes[best[0]].title)}“ klicken hierher weiter</div>` : ''; })()}
       <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-prev>Vorschau</button><button class="btn sec" data-path>⇄ Verbindung</button><button class="btn sec" data-focus>Fokus</button><button class="btn sec" data-hide>Nicht vorschlagen</button></div>`;
