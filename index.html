@@ -397,7 +397,8 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 "use strict";
 /* ---------- storage ---------- */
 const S_KEY = 'wikigraph.v1';
-const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {}, hidden: [], showLocal: true });
+const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {}, hidden: [], showLocal: true, rank: { links: true, cs: true, hl: true, fair: true } });
+const RK = () => Object.assign({ links: true, cs: true, hl: true, fair: true }, db.rank || {});
 /* identifier / meta articles that are linked from citations, not topics */
 const IDENT = new Set([
   'Digital Object Identifier', 'DOI', 'Internationale Standardnummer für fortlaufende Sammelwerke', 'ISSN', 'Internationale Standardbuchnummer', 'ISBN',
@@ -1150,7 +1151,7 @@ function analyzeRaw(tMax) {
       } else {
         let g = gc.get(k);
         if (!g) { g = { key: k, title: k.slice(pre.length), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
-        if (g.from[g.from.length - 1] !== a) { const w = hs && hs.has(k) ? wt * 3 : wt; if (w !== wt) g.hl = true; g.c++; g.s += w; g.from.push(a); g.fw.push(w); }
+        if (g.from[g.from.length - 1] !== a) { const inHl = !!(hs && hs.has(k)); if (inHl) { g.hl = true; g.sh = (g.sh || 0) + 2 * wt; } g.c++; g.sl = (g.sl || 0) + wt; g.from.push(a); g.fw.push(inHl ? wt * 3 : wt); }
       }
     }
   }
@@ -1169,9 +1170,11 @@ function analyzeRaw(tMax) {
       if (!g.from.includes(a)) { g.c++; g.from.push(a); g.fw.push(0); }
     }
   }
-  for (const g of gc.values()) if (g.cp) g.s += 3 * g.cp;
+  // score = the factors switched on in the view menu
+  const R = RK();
+  for (const g of gc.values()) g.s = (R.links ? g.sl || 0 : 0) + (R.hl ? g.sh || 0 : 0) + (R.cs ? 3 * (g.cp || 0) : 0);
   for (const [id, w] of wdl) { const l = pairs.get(id); if (l) { l.wd = w.ls; if (l.type === 'sem') l.type = 'wd'; } else { const nl = { s: w.s, t: w.t, type: 'wd', c: 1, wd: w.ls }; pairs.set(id, nl); links.push(nl); } }
-  const ghosts = [...gc.values()].filter(g => g.c >= 2 || g.hl || (g.cp || 0) >= .05).sort((x, y) => y.s - x.s || x.title.localeCompare(y.title));
+  const ghosts = [...gc.values()].filter(g => g.s > 0 && ((R.links && g.c >= 2) || (R.hl && g.hl) || (R.cs && (g.cp || 0) >= .05))).sort((x, y) => y.s - x.s || x.title.localeCompare(y.title));
   return { vis, links, ghosts, gc };
 }
 
@@ -1243,7 +1246,7 @@ function localSug(n) {
     .map(x => ({ ...x, c: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).c : 1) }))
     .map(x => ({ ...x, s: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).s : 0), p: csP(d, x.k) }))
     .concat((d.cs && d.cs.t ? d.cs.l : []).map(([tg]) => ({ o: tg, i: 9999, k: resolve(K(n.lang, tg)) })).filter(x => !(d.out || []).some(o => resolve(K(n.lang, o)) === x.k) && !db.nodes[x.k] && !hidden.has(x.k) && x.k !== n.key && !isIdent(x.o)).map(x => ({ ...x, c: 1, s: 0, p: csP(d, x.k) })))
-    .sort((a, b) => b.p - a.p || b.c - a.c || b.s - a.s || a.i - b.i).slice(0, 8);
+    .sort((a, b) => { const R = RK(); return (R.cs ? b.p - a.p : 0) || (R.links ? b.c - a.c : 0) || b.s - a.s || a.i - b.i; }).slice(0, 8);
 }
 function addTemp(n) {
   clearTemp();
@@ -1294,8 +1297,10 @@ function rebuild() {
       groups.get(cl).push(g);           // already sorted by score
     }
     // fair share: pick round-robin across topics, strongest topic first in each round
-    const qs = [...groups.values()].filter(q => q.length).sort((a, b) => b[0].s - a[0].s), picked = [];
-    while (picked.length < max && qs.some(q => q.length)) for (const q of qs) { if (picked.length >= max) break; if (q.length) picked.push(q.shift()); }
+    const qs = [...groups.values()].filter(q => q.length).sort((a, b) => b[0].s - a[0].s);
+    let picked = [];
+    if (RK().fair) while (picked.length < max && qs.some(q => q.length)) for (const q of qs) { if (picked.length >= max) break; if (q.length) picked.push(q.shift()); }
+    else picked = an.ghosts.slice(0, max);
     for (const g of picked) {
       const p = place(g.key, g.from[0]);
       const o = { key: g.key, title: g.title, lang: g.lang, ghost: true, c: g.c, sc: g.s, cp: g.cp || 0, cl: g.cl, hl: g.hl, from: g.from, w: 0, x: p.x, y: p.y, vx: 0, vy: 0, r: 4 + Math.min(6, g.c * 1.2) };
@@ -1592,6 +1597,10 @@ $('gFilter').onclick = () => {
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Ansicht</div>
     <div class="frow">${chip('ghost', G.ghost, 'Vorschläge')}${chip('sem', G.sem, 'Querverbindungen')}${chip('lbl', G.lbl, 'Labels')}${chip('wd', !!db.showWd, 'Wikidata-Beziehungen')}</div>
+    <div class="flab">Vorschläge bewerten nach</div>
+    <div class="frow">${chip('r:cs', RK().cs, 'Clickstream (Weiterklicks)')}${chip('r:links', RK().links, 'Links deiner Artikel')}${chip('r:hl', RK().hl, 'Markierungen')}</div>
+    <div class="flab">Plätze verteilen</div>
+    <div class="frow">${chip('d:fair', RK().fair, 'Fair nach Themen')}${chip('d:best', !RK().fair, 'Beste insgesamt')}</div>
     <div class="flab">Anzahl Vorschläge im Graph</div>
     <div class="time"><button class="chip${db.ghostN == null ? ' on' : ''}" id="gnAuto" type="button">Auto</button><input type="range" id="gn" min="0" max="${Math.max(10, Math.min(60, G.ghostAvail || 0))}" value="${G.ghostMax || 0}"><span id="gnv"></span></div>
     <div class="frow" style="margin-top:8px">${chip('local', !!db.showLocal, 'Beim Antippen eigene Vorschläge einblenden')}</div>
@@ -1601,7 +1610,7 @@ $('gFilter').onclick = () => {
     <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
     <div class="flab">Legende</div>
     <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border-color:var(--accent2)"></i>Wikidata-Beziehung (z. B. „Teil von“)</div><div><i style="border-color:var(--ink);border-top-style:dashed"></i>gefundener Verbindungsweg</div></div>
-    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben), reihum fair verteilt auf deine Themen, damit kein stark vernetztes Thema alles belegt. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
+    <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben). Bei „Fair nach Themen“ werden die Plätze reihum auf deine Themen verteilt, damit kein stark vernetztes Thema alles belegt; bei „Beste insgesamt“ zählt nur die Punktzahl. Welche Faktoren in die Punktzahl eingehen, stellst du oben unter „Vorschläge bewerten nach“ ein. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>`;
   $('pop').classList.add('on');
   const gnLabel = () => { $('gnv').textContent = (G.ghostMax || 0) + ' von ' + (G.ghostAvail || 0); };
   gnLabel();
@@ -1613,6 +1622,15 @@ $('gFilter').onclick = () => {
   $('gnAuto').onclick = () => { db.ghostN = null; save(); $('gnAuto').classList.add('on'); rebuild(); heat(.25); $('gn').value = G.ghostMax; gnLabel(); };
   pb.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
     const t = b.dataset.t;
+    if (t.startsWith('r:')) {
+      const R = RK(), f = t.slice(2);
+      if (R[f] && ['cs', 'links', 'hl'].filter(x => R[x]).length === 1) { toast('Mindestens ein Faktor muss an bleiben'); return; }
+      R[f] = !R[f]; db.rank = R; save(); b.classList.toggle('on', R[f]); rebuild(); heat(.25); gnLabel(); return;
+    }
+    if (t.startsWith('d:')) {
+      const R = RK(); R.fair = t === 'd:fair'; db.rank = R; save();
+      pb.querySelectorAll('[data-t^="d:"]').forEach(x => x.classList.toggle('on', x === b)); rebuild(); heat(.25); return;
+    }
     if (t === 'wd') { db.showWd = !db.showWd; b.classList.toggle('on', db.showWd); save(); if (db.showWd && (!db.wd || db.wd.n !== Object.values(db.nodes).filter(n => n.qid).length)) loadWikidata(false); rebuild(); heat(.25); return; }
     if (t === 'local') { db.showLocal = !db.showLocal; save(); b.classList.toggle('on', db.showLocal); if (G.sel) select(G.sel); return; }
     if (t.startsWith('c:')) { G.color = t.slice(2); pb.querySelectorAll('[data-t^="c:"]').forEach(x => x.classList.toggle('on', x === b)); }
