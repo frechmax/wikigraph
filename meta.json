@@ -1,0 +1,1 @@
+{"shards": 4096, "topk": 10, "min_n": 15, "langs": {"de": {"month": "2026-10", "sources": 319484, "rows": 4901505, "link_type": true, "topk": 10, "min_n": 15}, "en": {"month": "2026-10", "sources": 2141590, "rows": 32180666, "link_type": true, "topk": 8, "min_n": 10}}}
