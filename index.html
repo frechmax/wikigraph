@@ -152,12 +152,13 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .time input{flex:1;accent-color:var(--accent)}
 .time span{min-width:78px;text-align:right}
 .sheet{position:absolute;left:8px;right:8px;bottom:8px;background:var(--card);border:1px solid var(--line);border-radius:16px;
-  box-shadow:0 8px 30px rgba(0,0,0,.12);padding:14px 14px 12px;display:none;max-height:55%;overflow-y:auto}
+  box-shadow:0 8px 30px rgba(0,0,0,.12);padding:14px 14px 12px;display:none;max-height:50%;overflow-y:auto;overflow-x:hidden;overflow-wrap:anywhere}
 .sheet.on{display:block}
 .sheet .st{font-weight:700;font-size:18px;line-height:1.25}
 .sheet .sm{font-size:13px;color:var(--muted);margin:3px 0 10px}
 .sheet .nb{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.sheet .nb .chip{font-size:12px}
+.sheet .nb .chip{font-size:12px;white-space:normal;text-align:left;max-width:100%}
+.sheet .chip,.sheet .btn{max-width:100%;white-space:normal}
 .btn{border:0;border-radius:12px;padding:10px 16px;background:var(--accent);color:var(--btnink);font-weight:600}
 .btn.sec{background:var(--btn2);color:var(--ink)}
 .btn.warn{background:#b0413e;color:#fff}
@@ -229,7 +230,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .sheet .chip.gh{border-style:dashed;color:var(--ghostink)}
 .sheet .shx{position:absolute;right:8px;top:8px;border:0;background:none;font-size:16px;color:var(--muted);padding:6px}
 .sheet .st{padding-right:28px}
-.cltag{display:inline-block;margin-left:2px;white-space:nowrap}
+.cltag{display:inline;margin-left:2px;white-space:normal}
 .frow{display:flex;flex-wrap:wrap;gap:6px}
 .flab{font-size:12px;color:var(--muted);margin:14px 0 6px}
 #popbody .time{margin-top:0}
@@ -1858,7 +1859,7 @@ function fitNodes(list, maxK, instant) {
 }
 function fit() { fitNodes(G.nodes.filter(shown)); }
 const sideSheet = () => isWide() && !isSplit();
-function sheetOcc() { const sh = $('sheet'); return sh.classList.contains('on') && !sideSheet() ? Math.min(G.H * .6, sh.offsetHeight + 16) : 0; }
+function sheetOcc() { const sh = $('sheet'); return sh.classList.contains('on') && !sideSheet() ? Math.min(G.H * .5, sh.offsetHeight + 16) : 0; }
 function sheetOccX() { const sh = $('sheet'); return sh.classList.contains('on') && sideSheet() ? Math.min(G.W * .5, sh.offsetWidth + 24) : 0; }
 function centerOn(n, k) { k = k || Math.max(G.cam.k, 1); flyTo(-n.x * k - sheetOccX() / 2, -n.y * k - sheetOcc() / 2, k); }
 function graphEnter() {
