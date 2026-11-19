@@ -1994,7 +1994,7 @@ function select(n) {
     const d = db.nodes[n.key];
     html = `<div class="st">${esc(n.title)}</div>
       <div class="sm">${d.desc ? esc(d.desc) + '<br>' : ''}${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)} ${clTag}</div>
-      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button><button class="btn sec" data-path>⇄ Verbindung</button>${db.hl && db.hl[n.key] ? `<button class="btn sec" data-notes>✎ ${db.hl[n.key].length} Markierung${db.hl[n.key].length > 1 ? 'en' : ''}</button>` : ''}</div>`;
+      <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button><button class="btn sec" data-path>⇄ Verbindung</button>${db.hl && db.hl[n.key] ? `<button class="btn sec" data-notes>✎ ${db.hl[n.key].length} Markierung${db.hl[n.key].length > 1 ? 'en' : ''}</button>` : ''}<button class="btn sec" data-rm>Aus Graph entfernen</button></div>`;
     const wds = wdOf(n.key);
     if (wds.length && db.showWd) html += `<div class="nbh">Wikidata-Beziehungen</div><div class="wdl">${wds.slice(0, 12).map(e => { const o = e.a === n.key ? e.b : e.a, t = db.nodes[o] ? db.nodes[o].title : o; return `<button type="button" data-k="${esc(o)}">${e.a === n.key ? `<span>${esc(e.l)}</span> → <b>${esc(t)}</b>` : `<b>${esc(t)}</b> → <span>${esc(e.l)}</span> → hier`}</button>`; }).join('')}</div>`;
     const sug = localSug(n);
@@ -2019,6 +2019,11 @@ function select(n) {
   sh.querySelector('[data-focus]').onclick = () => {
     G.focus = G.focus === n.key ? null : n.key; G.hiCl = null; computeFocus(); select(n);
     if (G.focusSet) fitNodes([...G.focusSet], 2); else fit();
+  };
+  const rb = sh.querySelector('[data-rm]');
+  if (rb) rb.onclick = () => {
+    if (!rb.dataset.armed) { rb.dataset.armed = 1; rb.className = 'btn warn'; const nh = (db.hl && db.hl[n.key] || []).length; rb.textContent = nh ? `Mit ${nh} Markierung${nh > 1 ? 'en' : ''} entfernen?` : 'Wirklich entfernen?'; setTimeout(() => { if (rb.isConnected) { delete rb.dataset.armed; rb.className = 'btn sec'; rb.textContent = 'Aus Graph entfernen'; } }, 4000); return; }
+    const t = n.title; removeNode(n.key); closeSheet(); rebuild(); heat(.2); toast('„' + t + '“ entfernt');
   };
   const hb = sh.querySelector('[data-hide]');
   if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); (db.hts = db.hts || {})[n.key] = Date.now(); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
@@ -2416,6 +2421,16 @@ $('file').onchange = async e => {
   } catch (err) { toast('Datei konnte nicht gelesen werden'); }
   e.target.value = '';
 };
+/* ---------- remove an article from the graph (with its navigation edges and highlights) ---------- */
+function removeNode(key) {
+  const now = Date.now();
+  delete db.nodes[key];
+  db.edges = db.edges.filter(e => e.f !== key && e.t !== key);
+  if (db.hl && db.hl[key]) { db.del = db.del || {}; db.hl[key].forEach(h => db.del[h.id] = now); delete db.hl[key]; }
+  if (db.pos) delete db.pos[key];
+  (db.ndel = db.ndel || {})[key] = now;
+  G.dirty = true; save(); savePositions();
+}
 /* ---------- merge (JSON import + device sync) ---------- */
 // Union of both datasets. Deletions travel as tombstones: db.del (highlights), db.hts/unhideTs (hidden), db.resetTs (delete all).
 function mergeData(d, imp) {
@@ -2460,6 +2475,16 @@ function mergeData(d, imp) {
   for (const k in db.hl || {}) { db.hl[k] = db.hl[k].filter(h => !del[h.id]); if (!db.hl[k].length) delete db.hl[k]; }
   const old = Date.now() - 180 * 864e5; for (const id in del) if (del[id] < old) delete del[id];
   if (d.wd && (!db.wd || (d.wd.ts || 0) > (db.wd.ts || 0))) db.wd = d.wd;
+  // removed articles: gone everywhere, unless read again after the removal
+  const nd = db.ndel = db.ndel || {};
+  for (const k in d.ndel || {}) nd[k] = Math.max(nd[k] || 0, d.ndel[k]);
+  for (const k in nd) {
+    const T = nd[k], n = db.nodes[k];
+    if (n) { n.visits = n.visits.filter(t => t > T); if (!n.visits.length) delete db.nodes[k]; else if (n.first <= T) n.first = n.visits[0]; }
+    db.edges = db.edges.filter(e => !((e.f === k || e.t === k) && e.ts <= T));
+    if (db.hl && db.hl[k]) { db.hl[k] = db.hl[k].filter(h => (h.ts || 0) > T); if (!db.hl[k].length) delete db.hl[k]; }
+    if (nd[k] < old) delete nd[k];
+  }
   // "delete all" on any device wins over everything older
   db.resetClr = Math.max(db.resetClr || 0, d.resetClr || 0) || undefined;
   let R = Math.max(db.resetTs || 0, d.resetTs || 0);
@@ -2485,7 +2510,7 @@ function canon(v) {   // stable JSON: sorted object keys, so identical data give
 function syncPart() {
   const hl = {}; for (const k in db.hl || {}) hl[k] = db.hl[k].slice().sort((a, b) => a.id < b.id ? -1 : 1);
   const nodes = {}; for (const k in db.nodes) { const n = Object.assign({}, db.nodes[k]); delete n.cs; nodes[k] = n; }   // clickstream is re-fetched per device
-  return { v: 1, nodes, edges: db.edges, alias: db.alias, hidden: (db.hidden || []).slice().sort(), hts: db.hts || {}, unhideTs: db.unhideTs, hl, del: db.del || {}, wd: db.wd, resetTs: db.resetTs, resetClr: db.resetClr };
+  return { v: 1, nodes, edges: db.edges, alias: db.alias, hidden: (db.hidden || []).slice().sort(), hts: db.hts || {}, unhideTs: db.unhideTs, hl, del: db.del || {}, wd: db.wd, resetTs: db.resetTs, resetClr: db.resetClr, ndel: db.ndel || {} };
 }
 const b64e = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
 async function pack(text) {
