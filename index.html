@@ -1541,24 +1541,49 @@ function rebuild() {
   G.extraLinks.forEach(l => { l.a.adj.add(l.b); l.b.adj.add(l.a); });
   if (G.hiCl != null && !G.clusters[G.hiCl]) G.hiCl = null;
   if (G.sel && !by.has(G.sel.key)) closeSheet(); else if (G.sel) G.sel = by.get(G.sel.key);
-  if (G.focus && !by.has(G.focus)) G.focus = null;
+  if (G.focus && !by.has(G.focus)) { G.focus = null; G.focusSaved = null; }
   computeFocus();
   renderGraphHeader(an);
   $('gempty').style.display = nodes.length ? 'none' : 'flex';
   G.dirty = false;
 }
+/* focus = local graph: neighbours of one article get their own compact layout; the global layout is restored afterwards */
+function setFocus(key, depth) {
+  const had = !!G.focus;
+  if (key && !had) G.focusSaved = new Map(G.nodes.map(n => [n.key, [n.x, n.y]]));
+  G.focus = key || null; if (depth) G.focusDepth = depth;
+  computeFocus();
+  if (!G.focus && had && G.focusSaved) {
+    for (const n of G.nodes) { const p = G.focusSaved.get(n.key); if (p) { n.x = p[0]; n.y = p[1]; n.vx = n.vy = 0; } }
+    G.focusSaved = null;
+  }
+  if (G.focusSet) {
+    const c = G.by.get(G.focus); G.focusC = [c.x, c.y];
+    // start from rings: direct neighbours around the article (keeping their direction), 2nd step outside next to their neighbour
+    const ang = m => Math.atan2(m.y - c.y, m.x - c.x);
+    const r1 = [...G.focusSet].filter(m => G.focusDist.get(m) === 1).sort((a, b) => ang(a) - ang(b));
+    const R1 = Math.max(110, r1.length * 16), A = new Map();
+    r1.forEach((m, i) => { const t = (r1.length ? ang(r1[0]) : 0) + i * 2 * Math.PI / r1.length; A.set(m, t); m.x = c.x + Math.cos(t) * R1; m.y = c.y + Math.sin(t) * R1; m.vx = m.vy = 0; });
+    const kids = new Map();
+    for (const m of G.focusSet) if (G.focusDist.get(m) === 2) { const par = r1.find(q => m.adj.has(q)); if (par) { if (!kids.has(par)) kids.set(par, []); kids.get(par).push(m); } }
+    const slot = 2 * Math.PI / Math.max(1, r1.length);
+    for (const [par, L] of kids) L.forEach((m, j) => { const t = A.get(par) + (L.length > 1 ? (j / (L.length - 1) - .5) * slot * .9 : 0), R2 = R1 + 120 + (j % 2) * 45; m.x = c.x + Math.cos(t) * R2; m.y = c.y + Math.sin(t) * R2; m.vx = m.vy = 0; });
+    G.alpha = Math.max(G.alpha, .35); for (let i = 0; i < 160; i++) tick();
+  }
+  requestDraw();
+}
 function computeFocus() {
-  G.focusSet = null;
+  G.focusSet = null; G.fN = null;
   const n = G.focus && G.by.get(G.focus);
   if (!n) { $('focuschip').classList.remove('on'); return; }
-  const set = new Set([n]); let front = [n];
-  for (let d = 0; d < G.focusDepth; d++) { const nx = []; for (const m of front) for (const o of m.adj) if (!set.has(o)) { set.add(o); nx.push(o); } front = nx; }
-  G.focusSet = set;
+  const set = new Set([n]), dist = new Map([[n, 0]]); let front = [n];
+  for (let d = 0; d < G.focusDepth; d++) { const nx = []; for (const m of front) for (const o of m.adj) if (!set.has(o)) { set.add(o); dist.set(o, d + 1); nx.push(o); } front = nx; }
+  G.focusSet = set; G.focusDist = dist;
   const fc = $('focuschip');
   fc.innerHTML = `<span>Fokus: <b>${esc(n.title)}</b></span><button type="button" data-d>${G.focusDepth === 1 ? '1 Schritt' : '2 Schritte'}</button><button type="button" data-x aria-label="Fokus beenden">✕</button>`;
   fc.classList.add('on');
-  fc.querySelector('[data-d]').onclick = () => { G.focusDepth = G.focusDepth === 1 ? 2 : 1; computeFocus(); fitNodes([...G.focusSet]); };
-  fc.querySelector('[data-x]').onclick = () => { G.focus = null; computeFocus(); requestDraw(); };
+  fc.querySelector('[data-d]').onclick = () => { setFocus(G.focus, G.focusDepth === 1 ? 2 : 1); fitNodes([...G.focusSet], 2); };
+  fc.querySelector('[data-x]').onclick = () => { const k = G.focus; setFocus(null); const m = G.by.get(k); if (m) centerOn(m, Math.max(.6, Math.min(G.cam.k, 1.2))); };
 }
 function renderGraphHeader(an) {
   const nv = an.vis.length, nl = an.links.length;
@@ -1600,7 +1625,8 @@ function gridRepulse(N, a) {
   }
 }
 function tick() {
-  const N = G.nodes, a = G.alpha;
+  const F = G.focusSet, N = F ? (G.fN || (G.fN = G.nodes.filter(n => F.has(n)))) : G.nodes, a = G.alpha;
+  const cx = F && G.focusC ? G.focusC[0] : 0, cy = F && G.focusC ? G.focusC[1] : 0, grav = F ? .012 : .004;
   if (N.length > 900) gridRepulse(N, a);
   else for (let i = 0; i < N.length; i++) {
     const p = N[i];
@@ -1616,6 +1642,7 @@ function tick() {
   }
   for (const l of (G.phys || G.links)) {
     const p = l.a, q = l.b;
+    if (F && (!F.has(p) || !F.has(q))) continue;
     const L = l.type === 'nav' ? 70 : l.type === 'sem' ? 120 : l.type === 'wd' ? 95 : 90;
     const s = l.type === 'nav' ? .08 : l.type === 'sem' ? .025 : l.type === 'wd' ? .045 : .03;
     let dx = q.x - p.x, dy = q.y - p.y; const d = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -1623,9 +1650,11 @@ function tick() {
     dx *= f; dy *= f;
     p.vx += dx; p.vy += dy; q.vx -= dx; q.vy -= dy;
   }
+  const fc = F && G.by.get(G.focus);
   for (const p of N) {
     if (p.fixed) { p.vx = p.vy = 0; continue; }
-    p.vx -= p.x * .004 * a; p.vy -= p.y * .004 * a;
+    if (p === fc) { p.x = cx; p.y = cy; p.vx = p.vy = 0; continue; }   // focused article stays in the middle
+    p.vx -= (p.x - cx) * grav * a; p.vy -= (p.y - cy) * grav * a;
     p.vx *= .6; p.vy *= .6;
     p.x += p.vx; p.y += p.vy;
   }
@@ -1646,6 +1675,7 @@ function loop() {
 }
 function requestDraw() { loop(); }
 function persistPos() {
+  if (G.focusSaved) return;
   for (const n of G.nodes) if (!n.temp) db.pos[n.key] = [Math.round(n.x), Math.round(n.y)];
   savePositions();
 }
@@ -1715,7 +1745,7 @@ function draw() {
   ctx.translate(W / 2 + cam.x, H / 2 + cam.y);
   ctx.scale(cam.k, cam.k);
   const sel = G.sel, k = cam.k, hc = G.hiCl;
-  const lit = n => sel ? (n === sel || sel.adj.has(n)) : hc != null ? n.cl === hc : true;
+  const lit = n => sel ? (n === sel || sel.adj.has(n) || (G.focusSet && G.focus === sel.key && G.focusSet.has(n))) : hc != null ? n.cl === hc : true;
   const curKey = current ? K(current.lang, current.title) : null;
   const now = Date.now(), V = VW();
   // semantic zoom: far out, topics become bubbles
@@ -1726,7 +1756,8 @@ function draw() {
   ctx.globalAlpha = 1;
   // links, batched per style (one stroke per group instead of one per link)
   const grp = {};
-  if (sel) for (const l of G.extraLinks || []) if (l.a === sel || l.b === sel) { const g = l.type + '1'; (grp[g] = grp[g] || []).push(l); }
+  const fcN = G.focusSet && G.by.get(G.focus);   // in focus mode all connections of the focused article are drawn
+  if (sel || fcN) for (const l of G.extraLinks || []) if (l.a === sel || l.b === sel || l.a === fcN || l.b === fcN) { const g = l.type + '1'; (grp[g] = grp[g] || []).push(l); }
   const [vx0, vy0] = toWorld(-50, -50), [vx1, vy1] = toWorld(W + 50, H + 50);
   for (const l of G.links) {
     if (!shown(l.a) || !shown(l.b)) continue;
@@ -1820,9 +1851,9 @@ function fitNodes(list, maxK, instant) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const n of list) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
   const w = Math.max(80, x1 - x0), h = Math.max(80, y1 - y0);
-  const occ = sheetOcc(), ox = sheetOccX();
-  const k = Math.min(maxK || 2.2, Math.max(.12, Math.min((G.W - ox) / (w + 90), (G.H - occ) / (h + 110))));
-  flyTo(-(x0 + x1) / 2 * k - ox / 2, -(y0 + y1) / 2 * k - occ / 2, k);
+  const occ = sheetOcc(), ox = sheetOccX(), top = G.focusSet ? 48 : 0;   // focus chip sits at the top
+  const k = Math.min(maxK || 2.2, Math.max(.12, Math.min((G.W - ox) / (w + 90), (G.H - occ - top) / (h + 110))));
+  flyTo(-(x0 + x1) / 2 * k - ox / 2, -(y0 + y1) / 2 * k - (occ - top) / 2, k);
   if (instant) { G.cam = { ...G.anim.to }; G.anim = null; }
 }
 function fit() { fitNodes(G.nodes.filter(shown)); }
@@ -1842,7 +1873,7 @@ function graphEnter() {
   else if (VW().start === 'local' && current) {
     // open as local graph around the article you're reading (only once per article, so "✕" sticks)
     const ck = K(current.lang, current.title);
-    if (G.localFor !== ck && G.by.has(ck)) { G.localFor = ck; G.focus = ck; G.focusDepth = 2; G.hiCl = null; computeFocus(); fitNodes([...G.focusSet], 1.6, true); }
+    if (G.localFor !== ck && G.by.has(ck)) { G.localFor = ck; G.hiCl = null; setFocus(ck, 2); fitNodes([...G.focusSet], 1.6, true); }
   }
   G.focusKey = null;
   loop();
@@ -1853,7 +1884,7 @@ window.addEventListener('resize', () => { applyLayout(); if (gOn()) { sizeCanvas
 if (window.ResizeObserver) new ResizeObserver(() => { if (gOn() && (cv.parentElement.clientWidth !== G.W || cv.parentElement.clientHeight - $('gbar').offsetHeight !== G.H)) { sizeCanvas(); requestDraw(); } }).observe($('v-graph'));
 
 /* header buttons */
-$('gFit').onclick = () => { G.hiCl = null; G.focus = null; computeFocus(); closeSheet(); renderGraphHeader(analyze(G.tMax, G.tMin)); fit(); };
+$('gFit').onclick = () => { G.hiCl = null; setFocus(null); closeSheet(); renderGraphHeader(analyze(G.tMax, G.tMin)); fit(); };
 $('gHere').onclick = () => {
   const n = current && G.by.get(K(current.lang, current.title));
   if (!n) { toast(current ? 'Aktueller Artikel ist gerade nicht im Graph sichtbar' : 'Noch kein Artikel geöffnet'); return; }
@@ -1873,7 +1904,7 @@ $('gq').addEventListener('input', () => {
     .forEach(n => {
       const b = document.createElement('button'); b.type = 'button';
       b.innerHTML = `${esc(n.title)}${n.ghost ? ' <small>Vorschlag</small>' : ''}`;
-      b.onclick = () => { $('gsearch').classList.remove('on'); $('gq').blur(); sizeCanvas(); G.focus = null; computeFocus(); select(n); centerOn(n, 1.4); };
+      b.onclick = () => { $('gsearch').classList.remove('on'); $('gq').blur(); sizeCanvas(); setFocus(null); select(n); centerOn(n, 1.4); };
       r.appendChild(b);
     });
   if (!r.children.length) r.innerHTML = '<div class="gnone">Nicht im Graph</div>';
@@ -1928,7 +1959,7 @@ $('gFilter').onclick = () => {
       if (val === undefined) { Vv[f] = !Vv[f]; b.classList.toggle('on', Vv[f]); }
       else { Vv[f] = f === 'start' ? val : +val; pb.querySelectorAll(`[data-t^="v:${f}:"]`).forEach(x => x.classList.toggle('on', x === b)); }
       db.view = Vv; save();
-      if (f === 'start') { G.localFor = null; if (val === 'all') { G.focus = null; computeFocus(); } }
+      if (f === 'start') { G.localFor = null; if (val === 'all') setFocus(null); }
       if (f === 'imp' || f === 'edgeK') { rebuild(); heat(.3); }
       requestDraw(); return;
     }
@@ -2107,8 +2138,9 @@ function select(n) {
   const pb2 = sh.querySelector('[data-path]'); if (pb2) pb2.onclick = () => startPick(n);
   const pv = sh.querySelector('[data-prev]'); if (pv) pv.onclick = () => showPreview(n.lang, n.title);
   sh.querySelector('[data-focus]').onclick = () => {
-    G.focus = G.focus === n.key ? null : n.key; G.hiCl = null; computeFocus(); select(n);
-    if (G.focusSet) fitNodes([...G.focusSet], 2); else fit();
+    G.hiCl = null; setFocus(G.focus === n.key ? null : n.key);
+    if (G.focusSet) { if (sideSheet()) select(n); else closeSheet(); fitNodes([...G.focusSet], 2); }   // small screen: give the local graph the whole area
+    else { select(n); centerOn(n, Math.max(.6, Math.min(G.cam.k, 1.2))); }
   };
   const rb = sh.querySelector('[data-rm]');
   if (rb) rb.onclick = () => {
