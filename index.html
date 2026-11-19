@@ -171,6 +171,10 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .stat span{font-size:12px;color:var(--muted)}
 .btns{display:flex;flex-wrap:wrap;gap:8px}
 .note{font-size:13px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.syncbox{display:flex;flex-direction:column;gap:8px}
+.syncbox input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:15px;outline:none}
+.syncst{font-size:13px;color:var(--muted)}
+.syncst.err{color:#b0413e}
 .day{font-size:13px;font-weight:600;margin:16px 0 2px;color:var(--muted)}
 .hrow{display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .hrow .tm{font-size:12px;color:var(--muted);flex:none}
@@ -401,8 +405,10 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
     <div class="stats" id="stats"></div>
     <h2 class="sec">Darstellung</h2>
     <div class="theme" id="themeSel"><button class="chip" data-th="auto">Automatisch</button><button class="chip" data-th="light">Hell</button><button class="chip" data-th="dark">Dunkel</button></div>
+    <h2 class="sec">Sync zwischen Geräten</h2>
+    <div class="syncbox" id="syncbox"></div>
     <h2 class="sec">Daten</h2>
-    <p class="note">Dein Graph liegt nur in diesem Browser auf diesem Gerät. Exportier ihn ab und zu als JSON, um ein Backup zu haben oder ihn auf ein anderes Gerät mitzunehmen.</p>
+    <p class="note">Ohne Sync liegt dein Graph nur in diesem Browser. Exportier ihn ab und zu als JSON, um ein Backup zu haben.</p>
     <div class="btns">
       <button class="btn sec" id="exJson">JSON exportieren</button>
       <button class="btn sec" id="imJson">JSON importieren</button>
@@ -479,6 +485,7 @@ function save() {
     try { localStorage.setItem(S_KEY, JSON.stringify(db)); }
     catch (e) { toast('Speichern fehlgeschlagen – bitte JSON exportieren'); }
   }, 400);
+  if (typeof syncSoon === 'function') syncSoon();
 }
 function savePositions() {
   clearTimeout(posSaveT);
@@ -580,15 +587,44 @@ function renderResults(list, lang) {
   if (!list.length) { ul.innerHTML = '<div class="empty">Nichts gefunden.</div>'; return; }
   list.forEach(r => ul.appendChild(resultItem(r, lang)));
 }
+/* Hybrid search: title prefix (what you type) + Cirrus full-text relevance (what you mean),
+   fused with Reciprocal Rank Fusion and nudged towards articles in / next to your own graph. */
+const pageProps = { prop: 'description|pageimages', piprop: 'thumbnail', pithumbsize: 96, pilimit: 20, redirects: 1 };
+const byIndex = d => ((d && d.query && d.query.pages) || []).sort((a, b) => (a.index ?? 99) - (b.index ?? 99));
+function fuseResults(q, lang, lists) {
+  const RRF = 60, ql = q.toLowerCase(), acc = new Map();
+  let gc = null; try { gc = analyze(Infinity).gc; } catch (e) { }
+  lists.forEach(({ pages, w }) => pages.forEach((p, rank) => {
+    let r = acc.get(p.title);
+    if (!r) { r = { title: p.title, desc: p.description, thumb: p.thumbnail && p.thumbnail.source, score: 0 }; acc.set(p.title, r); }
+    r.score += w / (RRF + rank + 1);
+    if (!r.desc && p.description) r.desc = p.description;
+    if (!r.thumb && p.thumbnail) r.thumb = p.thumbnail.source;
+  }));
+  for (const r of acc.values()) {
+    const k = resolve(K(lang, r.title));
+    if (r.title.toLowerCase() === ql) r.score += 1;                       // exact title always first
+    if (db.nodes[k]) r.score += 0.012;                                   // already read
+    else { const g = gc && gc.get(k); if (g && g.s > 0) { r.score += 0.008; r.badge = 'verbunden'; } }   // neighbour in your graph
+  }
+  return [...acc.values()].sort((a, b) => b.score - a.score).slice(0, 14);
+}
 async function doSuggest() {
   const q = qEl.value.trim(), lang = db.lang, tok = ++sTok;
   $('home').style.display = q ? 'none' : '';
   if (!q) { $('results').innerHTML = ''; renderHome(); return; }
   try {
-    const d = await api(lang, { action: 'query', generator: 'prefixsearch', gpssearch: q, gpslimit: 12, prop: 'description|pageimages', piprop: 'thumbnail', pithumbsize: 96, pilimit: 12, redirects: 1 });
+    const [pre, full] = await Promise.allSettled([
+      api(lang, { action: 'query', generator: 'prefixsearch', gpssearch: q, gpslimit: 10, ...pageProps }),
+      // full-text: matches content, redirects and popularity; rewrites typos / zero-hit queries
+      q.length >= 3 ? api(lang, { action: 'query', generator: 'search', gsrsearch: q, gsrlimit: 12, gsrnamespace: 0, gsrenablerewrites: 1, ...pageProps }) : Promise.resolve(null)
+    ]);
     if (tok !== sTok) return;
-    const pages = ((d.query && d.query.pages) || []).sort((a, b) => (a.index ?? 99) - (b.index ?? 99));
-    renderResults(pages.map(p => ({ title: p.title, desc: p.description, thumb: p.thumbnail && p.thumbnail.source })), lang);
+    if (pre.status === 'rejected' && full.status === 'rejected') throw pre.reason;
+    const lists = [];
+    if (pre.status === 'fulfilled') lists.push({ pages: byIndex(pre.value), w: 1 });
+    if (full.status === 'fulfilled' && full.value) lists.push({ pages: byIndex(full.value), w: q.includes(' ') ? 1.3 : 0.9 });   // multi-word = more "meaning"
+    renderResults(fuseResults(q, lang, lists), lang);
   } catch (e) {
     if (tok !== sTok) return;
     const ql = q.toLowerCase(), loc = Object.values(db.nodes).filter(n => n.title.toLowerCase().includes(ql)).slice(0, 15);
@@ -602,10 +638,15 @@ async function doFull() {
   $('home').style.display = 'none';
   $('results').innerHTML = '<div class="loading">Suche …</div>';
   try {
-    const d = await api(lang, { action: 'query', list: 'search', srsearch: q, srlimit: 25, srprop: 'snippet' });
+    const d = await api(lang, { action: 'query', list: 'search', srsearch: q, srlimit: 25, srprop: 'snippet', srinfo: 'suggestion|rewrittenquery', srenablerewrites: 1 });
     if (tok !== sTok) return;
     const tmp = document.createElement('div');
     renderResults(d.query.search.map(s => { tmp.innerHTML = s.snippet; return { title: s.title, desc: tmp.textContent }; }), lang);
+    const si = d.query.searchinfo || {}, alt = si.rewrittenquery || si.suggestion;
+    if (alt && alt.toLowerCase() !== q.toLowerCase()) {
+      $('results').insertAdjacentHTML('afterbegin', `<div class="note" style="margin:8px 0">${si.rewrittenquery ? 'Ergebnisse für' : 'Meintest du'} <a href="#" id="didYouMean"><b>${esc(alt)}</b></a>?</div>`);
+      $('didYouMean').onclick = ev => { ev.preventDefault(); qEl.value = alt; doFull(); };
+    }
   } catch (e) { $('results').innerHTML = '<div class="empty">Keine Verbindung zu Wikipedia.</div>'; }
 }
 function renderHome() {
@@ -1980,7 +2021,7 @@ function select(n) {
     if (G.focusSet) fitNodes([...G.focusSet], 2); else fit();
   };
   const hb = sh.querySelector('[data-hide]');
-  if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
+  if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); (db.hts = db.hts || {})[n.key] = Date.now(); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
   sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
   sh.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => showPreview(n.lang, b.dataset.pv));
   sh.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { const d = db.nodes[b.dataset.go]; if (d) openTitle(d.lang, d.title, null, n.key); });
@@ -2112,12 +2153,13 @@ function editHl(id, focusNote) {
   const ta = $('hlnote');
   if (focusNote) setTimeout(() => ta.focus(), 50);
   const repaint = () => { if (current && K(current.lang, current.title) === key) { unpaint(h.id); paintHighlights(); } };
-  ta.oninput = () => { h.note = ta.value; save(); };
+  ta.oninput = () => { h.note = ta.value; h.upd = Date.now(); save(); };
   ta.onchange = repaint;
-  pb.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { h.color = b.dataset.c; save(); pb.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b)); pb.querySelector('.hlq').className = 'hlq hl-' + h.color; repaint(); });
+  pb.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { h.color = b.dataset.c; h.upd = Date.now(); save(); pb.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b)); pb.querySelector('.hlq').className = 'hlq hl-' + h.color; repaint(); });
   pb.querySelector('[data-ok]').onclick = () => { h.note = ta.value; save(); repaint(); $('pop').classList.remove('on'); if (view === 'notes') renderNotes(); };
   pb.querySelector('[data-del]').onclick = () => {
     db.hl[key] = db.hl[key].filter(x => x.id !== h.id); if (!db.hl[key].length) delete db.hl[key];
+    (db.del = db.del || {})[h.id] = Date.now();
     save(); unpaint(h.id); $('pop').classList.remove('on'); toast('Markierung gelöscht'); if (view === 'notes') renderNotes();
   };
 }
@@ -2332,6 +2374,7 @@ $('notesVault').onclick = exportVault;
 
 /* ---------- more: history, stats, export ---------- */
 function renderMore() {
+  renderSync();
   const nodes = Object.values(db.nodes);
   const views = nodes.reduce((s, n) => s + n.visits.length, 0);
   const an = analyze(Infinity);
@@ -2367,26 +2410,167 @@ $('file').onchange = async e => {
   try {
     const d = JSON.parse(await f.text());
     if (!d.nodes) throw 0;
-    for (const [k, n] of Object.entries(d.nodes)) {
-      const m = db.nodes[k];
-      if (!m) db.nodes[k] = n;
-      else {
-        m.visits = [...new Set([...m.visits, ...n.visits])].sort((a, b) => a - b);
-        m.first = Math.min(m.first, n.first); m.last = Math.max(m.last || 0, n.last || 0);
-        m.out = m.out && m.out.length ? m.out : n.out; m.qid = m.qid || n.qid; m.desc = m.desc || n.desc;
-      }
-    }
-    const seen = new Set(db.edges.map(x => x.f + '|' + x.t + '|' + x.ts));
-    for (const x of d.edges || []) if (!seen.has(x.f + '|' + x.t + '|' + x.ts)) db.edges.push(x);
-    db.edges.sort((a, b) => a.ts - b.ts);
-    Object.assign(db.alias, d.alias || {}); aliasRev++;
-    db.hidden = [...new Set([...(db.hidden || []), ...(d.hidden || [])])];
-    for (const k in d.hl || {}) { const L = hlList(k), ids = new Set(L.map(x => x.id)); d.hl[k].forEach(h => { if (!ids.has(h.id)) L.push(h); }); }
+    mergeData(d, true);
     for (const k in d.pos || {}) if (!db.pos[k]) db.pos[k] = d.pos[k];
     save(); savePositions(); G.dirty = true; G.fitted = false; renderMore(); toast('Import erfolgreich');
   } catch (err) { toast('Datei konnte nicht gelesen werden'); }
   e.target.value = '';
 };
+/* ---------- merge (JSON import + device sync) ---------- */
+// Union of both datasets. Deletions travel as tombstones: db.del (highlights), db.hts/unhideTs (hidden), db.resetTs (delete all).
+function mergeData(d, imp) {
+  if (imp) { db.resetClr = Date.now(); }   // an imported backup must survive an earlier "delete all"
+  for (const [k, n] of Object.entries(d.nodes || {})) {
+    const m = db.nodes[k];
+    if (!m) db.nodes[k] = JSON.parse(JSON.stringify(n));
+    else {
+      m.visits = [...new Set([...m.visits, ...n.visits])].sort((a, b) => a - b);
+      m.first = Math.min(m.first, n.first); m.last = Math.max(m.last || 0, n.last || 0);
+      for (const f in n) {     // other fields: deterministic winner so both devices converge on the same value
+        if (f === 'visits' || f === 'first' || f === 'last' || f === 'cs' || n[f] === undefined) continue;
+        const a = m[f], b = n[f];
+        if (a === undefined || (Array.isArray(a) && !a.length)) { m[f] = b; continue; }
+        if (Array.isArray(a) && Array.isArray(b) && a.length !== b.length) { if (b.length > a.length) m[f] = b; continue; }
+        const ca = canon(a), cb = canon(b); if (cb > ca) m[f] = b;
+      }
+    }
+  }
+  const seen = new Set(db.edges.map(x => x.f + '|' + x.t + '|' + x.ts));
+  for (const x of d.edges || []) { const id = x.f + '|' + x.t + '|' + x.ts; if (!seen.has(id)) { seen.add(id); db.edges.push(x); } }
+  db.edges.sort((a, b) => a.ts - b.ts || (a.f < b.f ? -1 : a.f > b.f ? 1 : a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+  Object.assign(db.alias, d.alias || {}); aliasRev++;
+  // hidden suggestions
+  const hts = db.hts = db.hts || {};
+  for (const k of db.hidden || []) if (!hts[k]) hts[k] = 1;            // legacy entries without timestamp
+  for (const k of d.hidden || []) { const t = (d.hts && d.hts[k]) || 1; if (!hts[k] || hts[k] < t) hts[k] = t; }
+  db.unhideTs = Math.max(db.unhideTs || 0, d.unhideTs || 0) || undefined;
+  for (const k in hts) if (hts[k] <= (db.unhideTs || 0)) delete hts[k];
+  db.hidden = Object.keys(hts);
+  // highlights: union by id, newer edit wins, tombstones remove
+  const del = db.del = db.del || {};
+  for (const id in d.del || {}) del[id] = Math.max(del[id] || 0, d.del[id]);
+  for (const k in d.hl || {}) {
+    const L = hlList(k);
+    for (const h of d.hl[k]) {
+      const i = L.findIndex(x => x.id === h.id);
+      if (i < 0) L.push(JSON.parse(JSON.stringify(h)));
+      else if ((h.upd || h.ts || 0) > (L[i].upd || L[i].ts || 0)) L[i] = JSON.parse(JSON.stringify(h));
+    }
+  }
+  for (const k in db.hl || {}) { db.hl[k] = db.hl[k].filter(h => !del[h.id]); if (!db.hl[k].length) delete db.hl[k]; }
+  const old = Date.now() - 180 * 864e5; for (const id in del) if (del[id] < old) delete del[id];
+  if (d.wd && (!db.wd || (d.wd.ts || 0) > (db.wd.ts || 0))) db.wd = d.wd;
+  // "delete all" on any device wins over everything older
+  db.resetClr = Math.max(db.resetClr || 0, d.resetClr || 0) || undefined;
+  let R = Math.max(db.resetTs || 0, d.resetTs || 0);
+  if (R) db.resetTs = R;
+  if (R <= (db.resetClr || 0)) R = 0;
+  if (R) {
+    for (const k in db.nodes) { const n = db.nodes[k]; n.visits = n.visits.filter(t => t >= R); if (!n.visits.length && n.first < R) delete db.nodes[k]; else if (n.first < R) n.first = n.visits[0]; }
+    db.edges = db.edges.filter(e => e.ts >= R);
+    for (const k in db.hl || {}) { db.hl[k] = db.hl[k].filter(h => (h.ts || 0) >= R); if (!db.hl[k].length) delete db.hl[k]; }
+  }
+}
+
+/* ---------- sync via a private GitHub Gist ---------- */
+const SY_KEY = 'wikigraph.sync', GIST_DESC = 'WikiGraph Sync', GIST_FILE = 'wikigraph-sync.txt';
+let sy = {}; try { sy = JSON.parse(localStorage.getItem(SY_KEY) || '{}'); } catch (e) { }
+const sySave = () => { try { localStorage.setItem(SY_KEY, JSON.stringify(sy)); } catch (e) { } };
+let syBusy = false, syAgain = false, syT = null, syMuted = false, syErr = '';
+function canon(v) {   // stable JSON: sorted object keys, so identical data gives identical text on every device
+  if (Array.isArray(v)) return '[' + v.map(x => x === undefined ? 'null' : canon(x)).join(',') + ']';
+  if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
+  return JSON.stringify(v);
+}
+function syncPart() {
+  const hl = {}; for (const k in db.hl || {}) hl[k] = db.hl[k].slice().sort((a, b) => a.id < b.id ? -1 : 1);
+  const nodes = {}; for (const k in db.nodes) { const n = Object.assign({}, db.nodes[k]); delete n.cs; nodes[k] = n; }   // clickstream is re-fetched per device
+  return { v: 1, nodes, edges: db.edges, alias: db.alias, hidden: (db.hidden || []).slice().sort(), hts: db.hts || {}, unhideTs: db.unhideTs, hl, del: db.del || {}, wd: db.wd, resetTs: db.resetTs, resetClr: db.resetClr };
+}
+const b64e = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+async function pack(text) {
+  if (typeof CompressionStream === 'undefined') return text;
+  const buf = await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+  return 'gz:' + b64e(buf);
+}
+async function unpack(s) {
+  if (!s.startsWith('gz:')) return s;
+  const bin = atob(s.slice(3)), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+async function gh(path, opt = {}) {
+  const r = await fetch('https://api.github.com' + path, Object.assign({ cache: 'no-store' }, opt, {
+    headers: Object.assign({ Authorization: 'Bearer ' + sy.token, Accept: 'application/vnd.github+json' }, opt.body ? { 'Content-Type': 'application/json' } : {})
+  }));
+  if (r.status === 401) throw new Error('Token ungültig oder abgelaufen');
+  if (r.status === 403 || r.status === 404) throw new Error('Kein Zugriff auf Gists – braucht der Token die Berechtigung „Gists: Read and write“?');
+  if (!r.ok) throw new Error('GitHub ' + r.status);
+  return r.json();
+}
+async function findGist() {
+  for (let page = 1; page <= 5; page++) {
+    const L = await gh('/gists?per_page=100&page=' + page);
+    const g = L.find(x => x.description === GIST_DESC && x.files && x.files[GIST_FILE]);
+    if (g) return g.id;
+    if (L.length < 100) break;
+  }
+  return null;
+}
+async function readGist() {
+  const g = await gh('/gists/' + sy.gist), f = g.files && g.files[GIST_FILE];
+  if (!f) return null;
+  let raw = f.content;
+  if (f.truncated) raw = await fetch(f.raw_url, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('GitHub ' + r.status); return r.text(); });
+  return unpack(raw);
+}
+const writeGist = async text => gh('/gists/' + sy.gist, { method: 'PATCH', body: JSON.stringify({ files: { [GIST_FILE]: { content: await pack(text) } } }) });
+function syncSoon() { if (!sy.token || syMuted) return; clearTimeout(syT); syT = setTimeout(syncNow, 8000); }
+async function syncNow() {
+  if (!sy.token || !navigator.onLine) return;
+  if (syBusy) { syAgain = true; return; }
+  syBusy = true; clearTimeout(syT); renderSync();
+  try {
+    if (!sy.gist) {
+      sy.gist = await findGist();
+      if (!sy.gist) { const g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: GIST_DESC, public: false, files: { [GIST_FILE]: { content: await pack(canon(syncPart())) } } }) }); sy.gist = g.id; }
+      sySave();
+    }
+    const before = canon(syncPart()), remote = await readGist();
+    if (remote) mergeData(JSON.parse(remote));
+    const after = canon(syncPart());
+    if (after !== before) {   // got something new from the other device
+      syMuted = true; save(); syMuted = false;
+      G.dirty = true; G.fitted = false;
+      if (view === 'graph') { rebuild(); heat(.2); } else if (view === 'search') renderHome(); else if (view === 'notes') renderNotes();
+    }
+    if (after !== remote) await writeGist(after);
+    sy.last = Date.now(); syErr = ''; sySave();
+  } catch (e) { syErr = e.message || 'Sync fehlgeschlagen'; }
+  syBusy = false; renderSync();
+  if (syAgain) { syAgain = false; syncSoon(); }
+}
+document.addEventListener('visibilitychange', () => {
+  if (!sy.token) return;
+  if (document.visibilityState === 'visible') syncNow();
+  else if (syT) syncNow();      // leaving the app: push pending changes right away
+});
+window.addEventListener('online', () => syncNow());
+function renderSync() {
+  const box = $('syncbox'); if (!box || view !== 'more') return;
+  if (!sy.token) {
+    box.innerHTML = `<p class="note">Synchronisiert deinen Graphen, Markierungen und Kommentare über ein privates GitHub Gist. Leg auf GitHub einen <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained Token</a> an, nur mit der Berechtigung <b>Gists: Read and write</b>, und trag ihn auf jedem Gerät hier ein.</p>
+      <input id="syTok" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
+      <div class="btns"><button class="btn" id="syOn">Sync einschalten</button></div>`;
+    $('syOn').onclick = () => { const t = $('syTok').value.trim(); if (!t) return; sy = { token: t }; sySave(); syncNow(); };
+    return;
+  }
+  const st = syBusy ? 'Synchronisiere …' : syErr ? 'Fehler: ' + esc(syErr) : sy.last ? 'Zuletzt synchronisiert ' + fmtDate(sy.last) + ', ' + fmtTime(sy.last) : 'Noch nicht synchronisiert';
+  box.innerHTML = `<div class="syncst${syErr && !syBusy ? ' err' : ''}">${st}</div>
+    <div class="btns"><button class="btn sec" id="syGo">Jetzt synchronisieren</button><button class="btn sec" id="syOff">Sync ausschalten</button></div>`;
+  $('syGo').onclick = () => syncNow();
+  $('syOff').onclick = () => { sy = {}; sySave(); syErr = ''; renderSync(); toast('Sync aus – deine Daten bleiben auf diesem Gerät'); };
+}
+
 function ttl() {
   const iri = n => `<https://${n.lang}.wikipedia.org/wiki/${encodeURIComponent(n.title.replace(/ /g, '_'))}>`;
   const lit = s => '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
@@ -2409,11 +2593,11 @@ function ttl() {
 }
 $('exTtl').onclick = () => download(`wikigraph-${stamp()}.ttl`, ttl(), 'text/turtle');
 $('cpTtl').onclick = async () => { try { await navigator.clipboard.writeText(ttl()); toast('Turtle kopiert'); } catch (e) { toast('Kopieren nicht möglich'); } };
-$('unhide').onclick = () => { const c = (db.hidden || []).length; db.hidden = []; save(); G.dirty = true; toast(c ? c + ' Vorschläge wieder sichtbar' : 'Keine ausgeblendeten Vorschläge'); };
+$('unhide').onclick = () => { const c = (db.hidden || []).length; db.hidden = []; db.hts = {}; db.unhideTs = Date.now(); save(); G.dirty = true; toast(c ? c + ' Vorschläge wieder sichtbar' : 'Keine ausgeblendeten Vorschläge'); };
 $('reset').onclick = () => {
   const b = $('reset');
   if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = 'Wirklich alles löschen?'; setTimeout(() => { delete b.dataset.armed; b.textContent = 'Alles löschen'; }, 4000); return; }
-  db = blank(); save(); savePositions(); current = null; G.by = new Map(); G.dirty = true; G.fitted = false;
+  db = blank(); db.resetTs = Date.now(); save(); savePositions(); current = null; G.by = new Map(); G.dirty = true; G.fitted = false;
   $('article').innerHTML = '<div class="empty">Noch kein Artikel geöffnet.</div>'; $('rtitle').textContent = 'Lesen'; $('rmeta').innerHTML = ''; $('mini').innerHTML = ''; trail = [];
   delete b.dataset.armed; b.textContent = 'Alles löschen'; renderMore(); toast('Gelöscht');
 };
@@ -2518,6 +2702,7 @@ async function boot() {
   route();
   if (!db.onboarded && !Object.keys(db.nodes).length) showIntro(0); else if (!db.onboarded) { db.onboarded = 1; save(); }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  syncNow();
 }
 boot();
 </script>
