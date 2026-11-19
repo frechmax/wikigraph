@@ -323,6 +323,34 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 .cbtns .btn{padding:7px 14px;font-size:14px}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
+/* ---------- desktop / laptop ---------- */
+#divider{display:none}
+@media (min-width:1100px){
+  :root{--rail:76px}
+  nav.tabs{top:0;bottom:0;right:auto;width:var(--rail);height:auto;padding:14px 0 0;flex-direction:column;justify-content:flex-start;gap:6px;border-top:0;border-right:1px solid var(--line)}
+  nav.tabs button{flex:none;height:62px}
+  .view{left:var(--rail);bottom:0}
+  .wrap{max-width:860px;margin:0 auto}
+  #article,#mini{max-width:780px;margin-left:auto;margin-right:auto}
+  #v-read>.bar .rbar{max-width:780px;margin:0 auto}
+  #toast,.resume{bottom:24px;left:calc(var(--rail) + (100vw - var(--rail)) / 2)}
+  .hlnav,.selbar{bottom:22px;left:calc(var(--rail) + (100vw - var(--rail)) / 2)}
+  #swipe{display:none!important}
+  /* graph node details and all pop-ups slide in from the right instead of from below */
+  .sheet{left:auto;right:12px;top:calc(var(--gtop, 60px) + 58px);bottom:auto;width:360px;max-height:calc(100% - var(--gtop, 60px) - 70px)}
+  #pop{justify-content:flex-end;align-items:stretch;background:rgba(0,0,0,.12)}
+  #popbody{width:420px;max-height:none;height:100%;border-radius:16px 0 0 16px;padding-bottom:22px;box-shadow:-8px 0 30px rgba(0,0,0,.14)}
+  /* reading and graph side by side */
+  body.split #v-read{display:block;right:auto;width:var(--readw)}
+  body.split #v-graph{display:block;left:calc(var(--rail) + var(--readw) + 6px)}
+  body.split #divider{display:block;position:fixed;top:0;bottom:0;left:calc(var(--rail) + var(--readw));width:6px;cursor:col-resize;z-index:20;background:var(--line);touch-action:none}
+  body.split #divider:hover,body.split #divider.drag{background:var(--accent)}
+  body.split #toast,body.split .hlnav,body.split .selbar,body.split .resume{left:calc(var(--rail) + var(--readw) / 2)}
+  body.split.dragging{cursor:col-resize;user-select:none}
+  body.split.dragging iframe,body.split.dragging #cv{pointer-events:none}
+  nav.tabs button[data-v="graph"].half{color:var(--accent);opacity:.75}
+}
+
 </style>
 </head>
 <body>
@@ -438,6 +466,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
   <button data-v="notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l5 5-9 9H6v-5z"/><path d="M4 21h16"/></svg>Notizen</button>
   <button data-v="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Verlauf</button>
 </nav>
+<div id="divider" title="Breite ziehen · Doppelklick: Mitte"></div>
 <div id="toast"></div>
 <div id="pop"><div id="popbody"></div></div>
 <div id="lb"><img id="lbimg" alt=""><div id="lbcap"></div><a id="lbfile" target="_blank" rel="noopener">Dateiseite auf Wikipedia ↗</a></div>
@@ -504,7 +533,7 @@ function applyTheme() {
   TC = { accent: v('--accent'), accent2: v('--accent2'), ghost: v('--ghost'), sem: v('--sem'), bg: v('--bg'), ink: v('--ink'), ghostink: v('--ghostink') };
   const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = TC.bg;
   document.querySelectorAll('#themeSel .chip').forEach(c => c.classList.toggle('on', c.dataset.th === m));
-  if (typeof requestDraw === 'function' && view === 'graph') requestDraw();
+  if (typeof requestDraw === 'function' && gOn()) requestDraw();
 }
 function setTheme(m) { db.theme = m; save(); applyTheme(); }
 try { mqDark.addEventListener('change', applyTheme); } catch (e) {}
@@ -534,6 +563,26 @@ function artHash(lang, title) { return '#a/' + lang + '/' + encodeURIComponent(t
 let navIntent = false;      // true = user opened an article (link/search); false = browser back/forward
 let pendingHL = null;      // key of an article whose link should be highlighted after opening
 function openTitle(lang, title, from, hl) { pendingFrom = from || null; navIntent = true; pendingHL = hl || null; go(artHash(lang, title)); }
+/* laptop: reading + graph side by side */
+const wideMQ = matchMedia('(min-width: 1100px)');
+let splitPref = true, readFrac = .5;
+try { splitPref = localStorage.getItem('wikigraph.split') !== '0'; readFrac = +localStorage.getItem('wikigraph.readw') || .5; } catch (e) { }
+const isWide = () => wideMQ.matches;
+const isSplit = () => isWide() && splitPref && !!current && view === 'read';
+const gOn = () => view === 'graph' || isSplit();
+let wasSplit = false;
+function applyLayout() {
+  const sp = isSplit();
+  const railW = isWide() ? 76 : 0, avail = innerWidth - railW;
+  readFrac = Math.min(.75, Math.max(.3, readFrac));
+  document.documentElement.style.setProperty('--readw', Math.round(avail * readFrac) + 'px');
+  document.body.classList.toggle('split', sp);
+  const gt = document.querySelector('nav.tabs button[data-v="graph"]'); if (gt) gt.classList.toggle('half', sp);
+  if (sp) { if (!wasSplit) graphEnter(); else { sizeCanvas(); requestDraw(); } }
+  else if (wasSplit && view !== 'graph' && G.raf) { cancelAnimationFrame(G.raf); G.raf = 0; }
+  wasSplit = sp;
+}
+wideMQ.addEventListener ? wideMQ.addEventListener('change', () => applyLayout()) : wideMQ.addListener(() => applyLayout());
 function show(v) {
   const was = view;
   if (was === 'read' && v !== 'read') readY = $('v-read').scrollTop;
@@ -547,6 +596,7 @@ function show(v) {
   if (v !== 'read') $('selbar').classList.remove('on');
   if (v === 'search') { renderHome(); if (db.onboarded) setTimeout(tipSearch, 400); }
   if (v === 'read' && was !== 'read') { $('v-read').scrollTop = readY; }
+  applyLayout();
 }
 function route() {
   if (typeof hideSpots === 'function') hideSpots();
@@ -918,7 +968,7 @@ async function learnRedirects(lang, t) {
     }
     const n = db.nodes[K(lang, t)]; if (n) n.rr = 1;
     save();
-    if (changed) { aliasRev++; G.dirty = true; if (view === 'graph') { rebuild(); heat(.2); } }
+    if (changed) { aliasRev++; G.dirty = true; if (gOn()) { rebuild(); heat(.2); } }
   } catch (e) {}
 }
 /* backfill for articles read before this existed: one every 1.5 s */
@@ -954,7 +1004,7 @@ setTimeout(async function csBackfill() {
   const m = await csMeta(); if (!m) return;
   const todo = Object.entries(db.nodes).filter(([, n]) => m.langs[n.lang] && (!n.cs || n.cs.m !== m.langs[n.lang].month || n.cs.v !== m.langs[n.lang].min_n)).map(([k]) => k);
   for (const k of todo) { await attachCS(k); await new Promise(r => setTimeout(r, 250)); }
-  if (todo.length && view === 'graph') { rebuild(); heat(.2); }
+  if (todo.length && gOn()) { rebuild(); heat(.2); }
 }, 4000);
 function csP(n, key) { // share of readers of article n who click on to key
   if (!n.cs || !n.cs.t) return 0;
@@ -978,10 +1028,23 @@ function recordVisit(lang, t, from, out, props) {
   }
   save();
   G.dirty = true;
+  if (isWide()) setTimeout(() => { applyLayout(); if (!isSplit()) return; graphEnter(); const gn = G.by.get(key); if (gn && VW().start !== 'local') centerOn(gn, G.cam.k); }, 0);
   return n;
 }
 $('back').onclick = () => history.back();
-$('toGraph').onclick = () => { if (current) { G.focusKey = K(current.lang, current.title); } go('#graph'); };
+$('toGraph').onclick = () => {
+  if (isWide()) { splitPref = !splitPref; try { localStorage.setItem('wikigraph.split', splitPref ? '1' : '0'); } catch (e) { } applyLayout(); toast(splitPref ? 'Graph daneben' : 'Graph ausgeblendet'); return; }
+  if (current) { G.focusKey = K(current.lang, current.title); } go('#graph');
+};
+/* draggable divider between article and graph */
+(() => {
+  const dv = $('divider'); let drag = false;
+  dv.addEventListener('pointerdown', e => { drag = true; dv.setPointerCapture(e.pointerId); dv.classList.add('drag'); document.body.classList.add('dragging'); });
+  dv.addEventListener('pointermove', e => { if (!drag) return; readFrac = (e.clientX - 76) / (innerWidth - 76); applyLayout(); sizeCanvas(); requestDraw(); });
+  const end = () => { if (!drag) return; drag = false; dv.classList.remove('drag'); document.body.classList.remove('dragging'); try { localStorage.setItem('wikigraph.readw', readFrac.toFixed(3)); } catch (e) { } };
+  dv.addEventListener('pointerup', end); dv.addEventListener('pointercancel', end);
+  dv.addEventListener('dblclick', () => { readFrac = .5; applyLayout(); sizeCanvas(); requestDraw(); try { localStorage.setItem('wikigraph.readw', '0.5'); } catch (e) { } });
+})();
 function hrefTitle(h) {
   try { return decodeURIComponent(h.slice(6).split('#')[0]).replace(/_/g, ' '); } catch (e) { return null; }
 }
@@ -1571,7 +1634,7 @@ function loop() {
   if (G.raf) return;
   const step = () => {
     G.raf = 0;
-    if (view !== 'graph') return;
+    if (!gOn()) return;
     const animating = stepAnim();
     if (G.alpha > .004) { tick(); if (G.nodes.length < 400) tick(); }
     draw();
@@ -1756,14 +1819,15 @@ function fitNodes(list, maxK, instant) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const n of list) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
   const w = Math.max(80, x1 - x0), h = Math.max(80, y1 - y0);
-  const occ = sheetOcc();
-  const k = Math.min(maxK || 2.2, Math.max(.12, Math.min(G.W / (w + 90), (G.H - occ) / (h + 110))));
-  flyTo(-(x0 + x1) / 2 * k, -(y0 + y1) / 2 * k - occ / 2, k);
+  const occ = sheetOcc(), ox = sheetOccX();
+  const k = Math.min(maxK || 2.2, Math.max(.12, Math.min((G.W - ox) / (w + 90), (G.H - occ) / (h + 110))));
+  flyTo(-(x0 + x1) / 2 * k - ox / 2, -(y0 + y1) / 2 * k - occ / 2, k);
   if (instant) { G.cam = { ...G.anim.to }; G.anim = null; }
 }
 function fit() { fitNodes(G.nodes.filter(shown)); }
-function sheetOcc() { const sh = $('sheet'); return sh.classList.contains('on') ? Math.min(G.H * .6, sh.offsetHeight + 16) : 0; }
-function centerOn(n, k) { k = k || Math.max(G.cam.k, 1); flyTo(-n.x * k, -n.y * k - sheetOcc() / 2, k); }
+function sheetOcc() { const sh = $('sheet'); return sh.classList.contains('on') && !isWide() ? Math.min(G.H * .6, sh.offsetHeight + 16) : 0; }
+function sheetOccX() { const sh = $('sheet'); return sh.classList.contains('on') && isWide() ? Math.min(G.W * .5, sh.offsetWidth + 24) : 0; }
+function centerOn(n, k) { k = k || Math.max(G.cam.k, 1); flyTo(-n.x * k - sheetOccX() / 2, -n.y * k - sheetOcc() / 2, k); }
 function graphEnter() {
   sizeCanvas();
   if (G.dirty) { rebuild(); heat(.6); }
@@ -1782,7 +1846,7 @@ function graphEnter() {
   loop();
   if (G.nodes.filter(n => !n.ghost).length >= 2) setTimeout(tipGraph, 700);
 }
-window.addEventListener('resize', () => { if (view === 'graph') { sizeCanvas(); requestDraw(); } });
+window.addEventListener('resize', () => { applyLayout(); if (gOn()) { sizeCanvas(); requestDraw(); } });
 
 /* header buttons */
 $('gFit').onclick = () => { G.hiCl = null; G.focus = null; computeFocus(); closeSheet(); renderGraphHeader(analyze(G.tMax, G.tMin)); fit(); };
@@ -2333,7 +2397,7 @@ async function loadWikidata(quiet) {
   } catch (e) { if (!quiet) toast('Wikidata gerade nicht erreichbar'); return; }
   db.wd = { n: nodes.length, ts: Date.now(), edges };
   save(); G.dirty = true;
-  if (view === 'graph') { rebuild(); heat(.25); }
+  if (gOn()) { rebuild(); heat(.25); }
   if (!quiet) toast(edges.length ? edges.length + ' Wikidata-Beziehungen gefunden' : 'Keine Wikidata-Beziehungen zwischen deinen Artikeln');
 }
 function wdOf(key) { return ((db.wd && db.wd.edges) || []).filter(e => e.a === key || e.b === key); }
@@ -2588,7 +2652,7 @@ async function syncNow() {
     if (after !== before) {   // got something new from the other device
       syMuted = true; save(); syMuted = false;
       G.dirty = true; G.fitted = false;
-      if (view === 'graph') { rebuild(); heat(.2); } else if (view === 'search') renderHome(); else if (view === 'notes') renderNotes();
+      if (gOn()) { rebuild(); heat(.2); } else if (view === 'search') renderHome(); else if (view === 'notes') renderNotes();
     }
     if (after !== remote) await writeGist(after);
     sy.last = Date.now(); syErr = ''; sySave();
