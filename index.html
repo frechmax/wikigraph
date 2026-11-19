@@ -206,7 +206,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .pvb{display:flex;gap:8px;margin-top:12px}
 .ghead{display:flex;align-items:center;gap:2px}
 .gtitle{flex:1;min-width:0}
-.gstat{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gstat{font-size:13px;line-height:1.3;color:var(--muted)}
 .gsearch{display:none;margin-top:8px}
 .gsearch.on{display:block}
 .gsearch input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:16px;outline:none}
@@ -397,7 +397,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 <section class="view" id="v-graph">
   <div class="bar" id="gbar">
     <div class="ghead">
-      <div class="gtitle"><h1>Dein Graph</h1><div class="gstat" id="gstat"></div></div>
+      <div class="gtitle"><div class="gstat" id="gstat"></div></div>
       <button class="icobtn" id="gSearchBtn" aria-label="Im Graph suchen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button>
       <button class="icobtn" id="gHere" aria-label="Aktueller Artikel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg></button>
       <button class="icobtn" id="gFit" aria-label="Alles zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
