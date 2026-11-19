@@ -294,6 +294,21 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 .nch{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .nextl button.inboth{outline:2px solid var(--accent);outline-offset:-2px;border-radius:6px}
 .nempty{font-size:13px;color:var(--muted);padding:8px 0}
+.attrib{font-size:12px;color:var(--muted);border-top:1px solid var(--line);margin-top:24px;padding-top:10px;line-height:1.5}
+.attrib a,.about a{color:var(--accent)}
+.about p{margin:0 0 8px}
+#intro{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center}
+#intro.on{display:flex}
+.icard{background:var(--card);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:20px 20px calc(20px + var(--bot));max-height:88vh;overflow-y:auto;box-shadow:0 -8px 30px rgba(0,0,0,.2)}
+.icard h2{font-family:Georgia,"Times New Roman",serif;font-weight:normal;font-size:26px;margin:6px 0 10px}
+.ibody{font-size:16px;line-height:1.5}
+.ibody ul{padding-left:1.1em;margin:0}
+.ibody li{margin:0 0 10px}
+.ilogo{text-align:center;margin:4px 0 8px}
+.ibtns{display:flex;gap:8px;align-items:center;margin-top:16px}
+.idots{display:flex;gap:6px;justify-content:center}
+.idots i{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.idots i.on{background:var(--accent)}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 </style>
@@ -333,6 +348,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 </section>
 <div id="swipe">‹</div>
 <div class="hlnav" id="hlnav"></div>
+<div id="intro"></div>
 <div class="selbar" id="selbar"><span>Markieren</span><button class="dot hl-y" data-c="y" aria-label="Gelb"></button><button class="dot hl-g" data-c="g" aria-label="Grün"></button><button class="dot hl-b" data-c="b" aria-label="Blau"></button><button class="dot hl-r" data-c="r" aria-label="Rot"></button><button class="selnote" data-note="1">✎ Kommentar</button></div>
 
 <!-- GRAPH -->
@@ -388,6 +404,13 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
       <button class="btn warn" id="reset">Alles löschen</button>
     </div>
     <input type="file" id="file" accept="application/json,.json" hidden>
+    <h2 class="sec">Über WikiGraph</h2>
+    <div class="note about">
+      <p>WikiGraph zeigt Artikel der <a href="https://www.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a> und speichert, was du liest, als Graph. Die Artikeltexte stammen von den Autorinnen und Autoren der Wikipedia und stehen unter <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de" target="_blank" rel="noopener">CC BY-SA 4.0</a>; unter jedem Artikel steht ein Link zu Original und Autorenliste. Bilder stammen von Wikimedia Commons und haben eigene Lizenzen (antippen → Dateiseite).</p>
+      <p>Weitere Daten: <a href="https://meta.wikimedia.org/wiki/Research:Wikipedia_clickstream" target="_blank" rel="noopener">Wikipedia Clickstream</a> und <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> (beide CC0). WikiGraph ist kein Angebot der Wikimedia Foundation.</p>
+      <p><b>Datenschutz:</b> Dein Verlauf, deine Markierungen und Einstellungen bleiben nur in diesem Browser auf diesem Gerät. Es gibt keine Accounts und keinen eigenen Server; die App ruft Inhalte direkt bei Wikipedia, Wikidata und GitHub ab.</p>
+    </div>
+    <div class="btns" style="margin-top:8px"><button class="btn sec" id="introAgain">Einführung noch mal zeigen</button></div>
     <h2 class="sec">Verlauf</h2>
     <div id="hist"></div>
   </div>
@@ -987,6 +1010,8 @@ async function openArticle(lang, title, from, restore) {
   leadFirst(root);
   const ibw = wrapInfobox(root);
   art.appendChild(root);
+  const wurl = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`;
+  art.insertAdjacentHTML('beforeend', `<div class="attrib">Text aus dem Wikipedia-Artikel <a href="${wurl}" target="_blank" rel="noopener">„${esc(t)}“</a> · <a href="${wurl}?action=history" target="_blank" rel="noopener">Autoren</a> · Lizenz <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de" target="_blank" rel="noopener">CC BY-SA 4.0</a>. Bilder: Lizenz siehe jeweilige Dateiseite.</div>`);
   if (ibw) requestAnimationFrame(() => { if (ibw.scrollHeight < 460) { ibw.classList.remove('cut'); ibw.querySelector('.ibmore').remove(); } });
   renderMini();
   paintHighlights();
@@ -2386,6 +2411,24 @@ $('offAll').onclick = async () => {
 window.addEventListener('offline', () => toast('Offline – gelesene Artikel bleiben lesbar'));
 window.addEventListener('online', () => toast('Wieder online'));
 
+/* first-start introduction */
+const INTRO = [
+  { t: 'Willkommen bei WikiGraph', h: `<div class="ilogo">LOGO</div><p>Lies Wikipedia wie gewohnt – alles, was du liest, wächst automatisch zu deinem persönlichen <b>Wissensgraphen</b>.</p><p>So siehst du, was du schon weißt, wie es zusammenhängt und was du als Nächstes entdecken könntest.</p>` },
+  { t: 'Lesen', h: `<ul><li><b>Link antippen</b> – weiterlesen; der Sprung wird als Pfeil im Graph gespeichert.</li><li><b>Link lang drücken</b> – Vorschau, ohne die Seite zu verlassen.</li><li><b>Text markieren</b> – unten erscheint eine Leiste zum Markieren und Kommentieren. Alles landet im Tab <i>Notizen</i>.</li><li>Am Artikelende: <b>Als Nächstes</b> – was andere Leser von hier aus klicken und was inhaltlich ähnlich ist.</li></ul>` },
+  { t: 'Der Graph', h: `<ul><li><b>Volle Kreise</b> sind Artikel, die du gelesen hast; Farben zeigen Themen.</li><li><b>Gestrichelte Kreise</b> sind Vorschläge: Artikel, auf die deine Artikel verweisen und zu denen andere Leser oft weiterklicken.</li><li>Kreis <b>antippen</b> für Details, Fundstellen im Text und „⇄ Verbindung finden“.</li><li><b>Herauszoomen</b> zeigt deine Themen als Blasen. Das Regler-Symbol oben öffnet alle Einstellungen.</li></ul>` },
+  { t: 'Deine Daten', h: `<ul><li>Alles bleibt <b>nur auf diesem Gerät</b> – kein Account, kein Server.</li><li>Sichere deinen Graphen ab und zu unter <i>Verlauf → JSON exportieren</i>.</li><li><b>Als App nutzen:</b> im Browser „Teilen → Zum Home-Bildschirm“ (iPhone) bzw. „App installieren“ (Android). Gelesene Artikel gehen dann auch offline.</li></ul>` }
+];
+function showIntro(i) {
+  const el = $('intro'), last = i === INTRO.length - 1, c = INTRO[i];
+  el.innerHTML = `<div class="icard"><div class="idots">${INTRO.map((_, j) => `<i class="${j === i ? 'on' : ''}"></i>`).join('')}</div><h2>${c.t}</h2><div class="ibody">${c.h.replace('LOGO', `<svg class="logo-big" viewBox="78 84 362 350" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M132 380 L 214 300 L 262 336 L 330 228" stroke-width="15"/><path d="M352 196 L 384 142" stroke-width="11" stroke-dasharray="1 20"/></g><g fill="currentColor"><circle cx="132" cy="380" r="44"/><circle cx="214" cy="300" r="30"/><circle cx="262" cy="336" r="24"/><circle cx="330" cy="228" r="30"/></g><circle cx="392" cy="128" r="20" fill="none" stroke="var(--logoacc)" stroke-width="11"/></svg>`)}</div>
+    <div class="ibtns">${last ? '' : '<button class="btn sec" data-skip>Überspringen</button>'}<span style="flex:1"></span>${i ? '<button class="btn sec" data-back>Zurück</button>' : ''}<button class="btn" data-next>${last ? 'Los geht’s' : 'Weiter'}</button></div></div>`;
+  el.classList.add('on');
+  const done = () => { el.classList.remove('on'); db.onboarded = 1; save(); setTimeout(() => qEl.focus(), 100); };
+  el.querySelector('[data-next]').onclick = () => last ? done() : showIntro(i + 1);
+  const bk = el.querySelector('[data-back]'); if (bk) bk.onclick = () => showIntro(i - 1);
+  const sk = el.querySelector('[data-skip]'); if (sk) sk.onclick = done;
+}
+$('introAgain').onclick = () => showIntro(0);
 async function boot() {
   if (idbP) {
     try {
@@ -2401,6 +2444,7 @@ async function boot() {
   langEl.value = db.lang;
   applyTheme();
   route();
+  if (!db.onboarded && !Object.keys(db.nodes).length) showIntro(0); else if (!db.onboarded) { db.onboarded = 1; save(); }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 boot();
