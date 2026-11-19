@@ -1248,18 +1248,19 @@ function resolvedOut(key, n) {
   outCache.set(key, { rev: aliasRev, src: out, arr });
   return arr;
 }
-function analyze(tMax) {
-  const mk = dbRev + '|' + tMax;
+function analyze(tMax, tMin = -Infinity) {
+  const mk = dbRev + '|' + tMax + '|' + tMin;
   if (anMemo && anMemo.k === mk) return anMemo.r;
-  const r = analyzeRaw(tMax); anMemo = { k: mk, r }; return r;
+  const r = analyzeRaw(tMax, tMin); anMemo = { k: mk, r }; return r;
 }
-function analyzeRaw(tMax) {
-  const vis = Object.keys(db.nodes).filter(k => db.nodes[k].first <= tMax);
+function analyzeRaw(tMax, tMin = -Infinity) {
+  const inT = t => t >= tMin && t <= tMax;   // an article is in the time window if you read it at least once inside it
+  const vis = Object.keys(db.nodes).filter(k => { const n = db.nodes[k]; return n.first <= tMax && (tMin === -Infinity || n.visits.some(inT)); });
   const N = vis.length, idx = new Map(vis.map((k, i) => [k, i]));
   const hidden = new Set(db.hidden || []);
   const pairs = new Map(), links = [];
   for (const e of db.edges) {
-    if (e.ts > tMax) continue;
+    if (e.ts > tMax || e.ts < tMin) continue;
     const i = idx.get(e.f), j = idx.get(e.t);
     if (i === undefined || j === undefined || i === j) continue;
     const id = i < j ? i * N + j : j * N + i, l = pairs.get(id);
@@ -1318,7 +1319,7 @@ function analyzeRaw(tMax) {
 /* ---------- graph view ---------- */
 const cv = $('cv'), ctx = cv.getContext('2d');
 const G = { nodes: [], links: [], by: new Map(), cam: { x: 0, y: 0, k: 1 }, sel: null, alpha: 0, ghost: true, sem: true, lbl: true, color: 'topic',
-  tMax: Infinity, dirty: true, focusKey: null, W: 0, H: 0, dpr: 1, raf: 0, fitted: false, clusters: [], hiCl: null, focus: null, focusDepth: 1, focusSet: null, anim: null };
+  tMax: Infinity, tMin: -Infinity, dirty: true, focusKey: null, W: 0, H: 0, dpr: 1, raf: 0, fitted: false, clusters: [], hiCl: null, focus: null, focusDepth: 1, focusSet: null, anim: null };
 const PAL_L = ['#2f5d8a', '#b5543c', '#3f8a5b', '#8a5aa8', '#c08a2b', '#2f8a8a', '#a8466e', '#6b7a2f'];
 const PAL_D = ['#86b4e3', '#e58d75', '#79c493', '#c09ae0', '#e5b45f', '#6cc6c6', '#e081a8', '#b3c46b'];
 const pal = i => (document.documentElement.dataset.theme === 'dark' ? PAL_D : PAL_L)[((i % 8) + 8) % 8];
@@ -1399,7 +1400,7 @@ function addTemp(n) {
 }
 function rebuild() {
   clearTemp();
-  const an = analyze(G.tMax);
+  const an = analyze(G.tMax, G.tMin);
   const old = G.by, by = new Map(), nodes = [];
   const place = (key, near) => {
     const o = old.get(key); if (o) return { x: o.x, y: o.y };
@@ -1412,7 +1413,7 @@ function rebuild() {
   for (const l of an.links) { if (!nbr.has(l.s)) nbr.set(l.s, l.t); if (!nbr.has(l.t)) nbr.set(l.t, l.s); }
   const V = VW(), curK = current ? K(current.lang, current.title) : null;
   // importance: hide "fleeting" articles (opened once, nothing marked, never read on from)
-  const outNav = new Map(); for (const e of db.edges) if (e.ts <= G.tMax) outNav.set(e.f, (outNav.get(e.f) || 0) + 1);
+  const outNav = new Map(); for (const e of db.edges) if (e.ts <= G.tMax && e.ts >= G.tMin) outNav.set(e.f, (outNav.get(e.f) || 0) + 1);
   const keep = k => { if (!V.imp || k === curK) return true; const n = db.nodes[k], hl = ((db.hl || {})[k] || []).length, on = outNav.get(k) || 0;
     return V.imp === 1 ? (n.visits.length > 1 || hl > 0 || on > 0) : (n.visits.length > 1 || hl > 0 || on > 1); };
   const visSorted = an.vis.filter(keep).sort((a, b) => db.nodes[a].first - db.nodes[b].first);
@@ -1420,7 +1421,7 @@ function rebuild() {
   for (const k of visSorted) {
     const n = db.nodes[k];
     const p = place(k, nbr.get(k));
-    const o = { key: k, title: n.title, lang: n.lang, ghost: false, w: n.visits.filter(t => t <= G.tMax).length || 1, last: n.last || n.first, x: p.x, y: p.y, vx: 0, vy: 0 };
+    const o = { key: k, title: n.title, lang: n.lang, ghost: false, w: n.visits.filter(t => t <= G.tMax && t >= G.tMin).length || 1, last: n.last || n.first, x: p.x, y: p.y, vx: 0, vy: 0 };
     o.r = 6 + Math.sqrt(o.w) * 3.2;
     nodes.push(o); by.set(k, o);
   }
@@ -1497,7 +1498,8 @@ function computeFocus() {
 }
 function renderGraphHeader(an) {
   const nv = an.vis.length, nl = an.links.length;
-  $('gstat').textContent = nv ? `${nv} Artikel · ${nl} Verbindungen${G.clusters.length ? ' · ' + G.clusters.length + ' Themen' : ''}` : '';
+  const tr = G.tMin === -Infinity && G.tMax === Infinity ? '' : ` · ${G.tMin === -Infinity ? 'bis' : fmtDate(G.tMin) + ' –'} ${G.tMax === Infinity ? 'heute' : fmtDate(G.tMax)}`;
+  $('gstat').textContent = nv ? `${nv} Artikel · ${nl} Verbindungen${G.clusters.length ? ' · ' + G.clusters.length + ' Themen' : ''}${tr}` : (tr ? 'Keine Artikel im Zeitraum' + tr : '');
   const c = $('clusters'); c.innerHTML = '';
   if (!G.clusters.length) { c.style.display = 'none'; return; }
   c.style.display = '';
@@ -1765,7 +1767,7 @@ function centerOn(n, k) { k = k || Math.max(G.cam.k, 1); flyTo(-n.x * k, -n.y * 
 function graphEnter() {
   sizeCanvas();
   if (G.dirty) { rebuild(); heat(.6); }
-  else renderGraphHeader(analyze(G.tMax));
+  else renderGraphHeader(analyze(G.tMax, G.tMin));
   if (!G.fitted) {
     for (let i = 0; i < 120 && G.alpha > .02; i++) tick();
     fitNodes(G.nodes, 2.2, true); G.fitted = true;
@@ -1783,7 +1785,7 @@ function graphEnter() {
 window.addEventListener('resize', () => { if (view === 'graph') { sizeCanvas(); requestDraw(); } });
 
 /* header buttons */
-$('gFit').onclick = () => { G.hiCl = null; G.focus = null; computeFocus(); closeSheet(); renderGraphHeader(analyze(G.tMax)); fit(); };
+$('gFit').onclick = () => { G.hiCl = null; G.focus = null; computeFocus(); closeSheet(); renderGraphHeader(analyze(G.tMax, G.tMin)); fit(); };
 $('gHere').onclick = () => {
   const n = current && G.by.get(K(current.lang, current.title));
   if (!n) { toast(current ? 'Aktueller Artikel ist gerade nicht im Graph sichtbar' : 'Noch kein Artikel geöffnet'); return; }
@@ -1811,7 +1813,8 @@ $('gq').addEventListener('input', () => {
 $('gFilter').onclick = () => {
   const ts = Object.values(db.nodes).map(n => n.first);
   G.t0 = ts.length ? Math.min(...ts) : Date.now(); G.t1 = Date.now();
-  const tv = G.tMax === Infinity ? 1000 : Math.round((G.tMax - G.t0) / Math.max(1, G.t1 - G.t0) * 1000);
+  const toV = t => Math.round((t - G.t0) / Math.max(1, G.t1 - G.t0) * 1000);
+  const tv = G.tMax === Infinity ? 1000 : toV(G.tMax), tvMin = G.tMin === -Infinity ? 0 : toV(G.tMin);
   const chip = (id, on, label) => `<button class="chip${on ? ' on' : ''}" data-t="${id}">${label}</button>`;
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Ansicht</div>
@@ -1832,8 +1835,11 @@ $('gFilter').onclick = () => {
     <div class="frow" style="margin-top:8px">${chip('local', !!db.showLocal, 'Beim Antippen eigene Vorschläge einblenden')}</div>
     <div class="flab">Farbe nach</div>
     <div class="frow">${chip('c:topic', G.color === 'topic', 'Thema')}${chip('c:lang', G.color === 'lang', 'Sprache')}${chip('c:recent', G.color === 'recent', 'Zuletzt gelesen')}</div>
-    <div class="flab">Zeitreise</div>
-    <div class="time"><button class="btn sec" id="play" type="button">▶</button><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv">${G.tMax === Infinity ? 'Alles' : fmtDate(G.tMax)}</span></div>
+    <div class="flab">Zeitraum</div>
+    <div class="frow" id="tquick">${[['7', 'Letzte 7 Tage'], ['30', 'Letzte 30 Tage'], ['90', 'Letzte 3 Monate'], ['all', 'Alles']].map(([d, l]) => `<button class="chip" data-tq="${d}">${l}</button>`).join('')}</div>
+    <div class="time" style="margin-top:8px"><span style="min-width:28px;text-align:left">Von</span><input type="range" id="tl0" min="0" max="1000" value="${tvMin}"><span id="tlv0"></span></div>
+    <div class="time"><span style="min-width:28px;text-align:left">Bis</span><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv"></span></div>
+    <div class="time"><button class="btn sec" id="play" type="button">▶ Zeitreise</button></div>
     <div class="flab">Legende</div>
     <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border-color:var(--accent2)"></i>Wikidata-Beziehung (z. B. „Teil von“)</div><div><i style="border-color:var(--ink);border-top-style:dashed"></i>gefundener Verbindungsweg</div></div>
     <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben). Bei „Fair nach Themen“ werden die Plätze reihum auf deine Themen verteilt, damit kein stark vernetztes Thema alles belegt; bei „Beste insgesamt“ zählt nur die Punktzahl. Welche Faktoren in die Punktzahl eingehen, stellst du oben unter „Vorschläge bewerten nach“ ein. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>
@@ -1873,15 +1879,31 @@ $('gFilter').onclick = () => {
     else { G[t] = !G[t]; b.classList.toggle('on', G[t]); if (t !== 'lbl') { rebuild(); heat(.3); gnLabel(); } }
     requestDraw();
   });
-  const setT = v => {
-    if (v >= 1000) { G.tMax = Infinity; $('tlv').textContent = 'Alles'; }
-    else { G.tMax = G.t0 + (G.t1 - G.t0) * v / 1000; $('tlv').textContent = fmtDate(G.tMax); }
-    rebuild(); heat(.25);
+  const tLabels = () => {
+    $('tlv0').textContent = G.tMin === -Infinity ? 'Anfang' : fmtDate(G.tMin);
+    $('tlv').textContent = G.tMax === Infinity ? 'Heute' : fmtDate(G.tMax);
+    const span = G.tMax === Infinity && G.tMin !== -Infinity ? Math.round((Date.now() - G.tMin) / 864e5) : null;
+    pb.querySelectorAll('[data-tq]').forEach(c => c.classList.toggle('on', c.dataset.tq === 'all' ? G.tMin === -Infinity && G.tMax === Infinity : span === +c.dataset.tq));
   };
-  $('tl').addEventListener('input', e => setT(+e.target.value));
+  const setRange = (v0, v1, src) => {       // keep "Von" <= "Bis": the handle you move pushes the other one
+    if (v0 > v1) { if (src === 0) v1 = v0; else v0 = v1; $('tl0').value = v0; $('tl').value = v1; }
+    G.tMin = v0 <= 0 ? -Infinity : G.t0 + (G.t1 - G.t0) * v0 / 1000;
+    G.tMax = v1 >= 1000 ? Infinity : G.t0 + (G.t1 - G.t0) * v1 / 1000;
+    tLabels(); rebuild(); heat(.25);
+  };
+  const setT = v => setRange(+$('tl0').value, v, 1);
+  $('tl').addEventListener('input', e => setRange(+$('tl0').value, +e.target.value, 1));
+  $('tl0').addEventListener('input', e => setRange(+e.target.value, +$('tl').value, 0));
+  pb.querySelectorAll('[data-tq]').forEach(c => c.onclick = () => {
+    const d = c.dataset.tq;
+    if (d === 'all') { G.tMin = -Infinity; G.tMax = Infinity; $('tl0').value = 0; $('tl').value = 1000; }
+    else { G.tMax = Infinity; G.tMin = Math.max(G.t0, Date.now() - d * 864e5); $('tl').value = 1000; $('tl0').value = Math.max(0, toV(G.tMin)); if (G.tMin <= G.t0) G.tMin = -Infinity; }
+    tLabels(); rebuild(); heat(.25); fit();
+  });
+  tLabels();
   $('play').onclick = () => {
     $('pop').classList.remove('on');
-    let v = 0; clearInterval(G.play);
+    let v = +$('tl0').value; clearInterval(G.play);
     const lab = $('playlab'); lab.classList.add('on');
     G.play = setInterval(() => {
       v = Math.min(1000, v + 25); setT(v);
@@ -1970,9 +1992,9 @@ function tap(sx, sy, n) {
   if (!n && bubbleT() > .5) {
     const [wx, wy] = toWorld(sx, sy);
     const g = bubbleGeo().filter(g => Math.hypot(g.x - wx, g.y - wy) < g.r).sort((a, b) => a.r - b.r)[0];
-    if (g) { G.hiCl = g.c.id; renderGraphHeader(analyze(G.tMax)); fitNodes(g.c.members, 1.2); return; }
+    if (g) { G.hiCl = g.c.id; renderGraphHeader(analyze(G.tMax, G.tMin)); fitNodes(g.c.members, 1.2); return; }
   }
-  if (n) { select(n); centerOn(n, G.cam.k); } else { closeSheet(); if (G.hiCl != null) { G.hiCl = null; renderGraphHeader(analyze(G.tMax)); } }
+  if (n) { select(n); centerOn(n, G.cam.k); } else { closeSheet(); if (G.hiCl != null) { G.hiCl = null; renderGraphHeader(analyze(G.tMax, G.tMin)); } }
 }
 
 /* sheet */
