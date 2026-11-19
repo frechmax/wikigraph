@@ -322,7 +322,8 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 .cbtns [data-off]{border:0;background:none;color:var(--muted);font-size:12px;padding:0}
 .cbtns small{color:var(--muted)}
 .cbtns .btn{padding:7px 14px;font-size:14px}
-.sheet .sbtns .rmbtn{padding:5px 10px;font-size:12px;margin-left:auto;align-self:center}
+.sheet .sbtns .rmbtn{padding:5px 10px;font-size:12px;margin-left:auto;align-self:center;white-space:nowrap;flex:none;min-width:76px;text-align:center}
+.sheet .sbtns .rmbtn.armed{color:#b0413e;border-color:#b0413e;font-weight:600}
 .sheet .sbtns .rmbtn.sec{background:none;border:1px solid var(--line);color:var(--muted)}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
@@ -2147,7 +2148,7 @@ function select(n) {
   };
   const rb = sh.querySelector('[data-rm]');
   if (rb) rb.onclick = () => {
-    if (!rb.dataset.armed) { rb.dataset.armed = 1; rb.className = 'btn warn rmbtn'; const nh = (db.hl && db.hl[n.key] || []).length; rb.textContent = nh ? `Mit ${nh} Markierung${nh > 1 ? 'en' : ''} entfernen?` : 'Wirklich entfernen?'; setTimeout(() => { if (rb.isConnected) { delete rb.dataset.armed; rb.className = 'btn sec rmbtn'; rb.textContent = 'Entfernen'; } }, 4000); return; }
+    if (!rb.dataset.armed) { rb.dataset.armed = 1; rb.className = 'btn sec rmbtn armed'; const nh = (db.hl && db.hl[n.key] || []).length; rb.textContent = nh ? `Sicher? (${nh} ✎)` : 'Sicher?'; setTimeout(() => { if (rb.isConnected) { delete rb.dataset.armed; rb.className = 'btn sec rmbtn'; rb.textContent = 'Entfernen'; } }, 4000); return; }
     const t = n.title; removeNode(n.key); closeSheet(); rebuild(); heat(.2); toast('„' + t + '“ entfernt');
   };
   const hb = sh.querySelector('[data-hide]');
