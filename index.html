@@ -589,6 +589,7 @@ function show(v) {
   view = v;
   document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + v));
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  applyLayout();                 // switch split/full layout first, so the graph is measured at its final size
   if (v === 'graph') graphEnter();
   if (v === 'more') renderMore();
   if (v === 'notes') { renderNotes(); setTimeout(tipNotes, 400); }
@@ -596,7 +597,6 @@ function show(v) {
   if (v !== 'read') $('selbar').classList.remove('on');
   if (v === 'search') { renderHome(); if (db.onboarded) setTimeout(tipSearch, 400); }
   if (v === 'read' && was !== 'read') { $('v-read').scrollTop = readY; }
-  applyLayout();
 }
 function route() {
   if (typeof hideSpots === 'function') hideSpots();
@@ -1847,6 +1847,8 @@ function graphEnter() {
   if (G.nodes.filter(n => !n.ghost).length >= 2) setTimeout(tipGraph, 700);
 }
 window.addEventListener('resize', () => { applyLayout(); if (gOn()) { sizeCanvas(); requestDraw(); } });
+// whenever the graph pane changes size (split on/off, divider, window), re-measure the canvas so it never gets stretched
+if (window.ResizeObserver) new ResizeObserver(() => { if (gOn() && (cv.parentElement.clientWidth !== G.W || cv.parentElement.clientHeight - $('gbar').offsetHeight !== G.H)) { sizeCanvas(); requestDraw(); } }).observe($('v-graph'));
 
 /* header buttons */
 $('gFit').onclick = () => { G.hiCl = null; G.focus = null; computeFocus(); closeSheet(); renderGraphHeader(analyze(G.tMax, G.tMin)); fit(); };
