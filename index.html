@@ -325,6 +325,13 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 .sheet .sbtns .rmbtn{padding:5px 10px;font-size:12px;margin-left:auto;align-self:center;white-space:nowrap;flex:none;min-width:76px;text-align:center}
 .sheet .sbtns .rmbtn.sec.armed{color:#b0413e;border-color:#b0413e;font-weight:600}
 .sheet .sbtns .rmbtn.sec{background:none;border:1px solid var(--line);color:var(--muted)}
+.timebar{position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 10px;box-shadow:0 4px 16px rgba(0,0,0,.08);z-index:3}
+.sheet.on ~ .timebar{display:none}
+.timebar .tspan{border:1px solid var(--line);background:var(--btn2);border-radius:99px;padding:4px 10px;font-size:12px;flex:none;min-width:64px}
+.timebar.active .tspan{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.timebar input{flex:1;min-width:120px;accent-color:var(--accent)}
+.timebar .tplay{border:0;background:none;font-size:14px;color:var(--accent);flex:none;width:26px}
+.timebar .tlab{flex-basis:100%;font-size:11px;color:var(--muted);text-align:center;margin-top:-4px}
 #toast{position:fixed;left:50%;bottom:calc(72px + var(--bot));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;max-width:90%;text-align:center}
 #toast.on{opacity:1}
 /* ---------- desktop / laptop ---------- */
@@ -415,6 +422,12 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
   <div class="focuschip" id="focuschip"></div>
   <div class="playlab" id="playlab"></div>
   <div class="sheet" id="sheet"></div>
+  <div class="timebar" id="timebar">
+    <button type="button" class="tspan" id="tspan">Alles</button>
+    <input type="range" id="twin" min="0" max="1000" value="1000" aria-label="Zeitfenster verschieben">
+    <button type="button" class="tplay" id="tplay" aria-label="Zeitreise abspielen">▶</button>
+    <div class="tlab" id="tlab">Alles bis heute – Zeitraum links wählen</div>
+  </div>
 </section>
 
 <!-- NOTES -->
@@ -1862,7 +1875,7 @@ function fitNodes(list, maxK, instant) {
 }
 function fit() { fitNodes(G.nodes.filter(shown)); }
 const sideSheet = () => isWide() && !isSplit();
-function sheetOcc() { const sh = $('sheet'); return sh.classList.contains('on') && !sideSheet() ? Math.min(G.H * .4, sh.offsetHeight + 16) : 0; }
+function sheetOcc() { const sh = $('sheet'); if (sh.classList.contains('on') && !sideSheet()) return Math.min(G.H * .4, sh.offsetHeight + 16); const tb = $('timebar'); return tb && !sh.classList.contains('on') ? tb.offsetHeight + 12 : 0; }
 function sheetOccX() { const sh = $('sheet'); return sh.classList.contains('on') && sideSheet() ? Math.min(G.W * .5, sh.offsetWidth + 24) : 0; }
 function centerOn(n, k) { k = k || Math.max(G.cam.k, 1); flyTo(-n.x * k - sheetOccX() / 2, -n.y * k - sheetOcc() / 2, k); }
 function graphEnter() {
@@ -1914,10 +1927,6 @@ $('gq').addEventListener('input', () => {
   if (!r.children.length) r.innerHTML = '<div class="gnone">Nicht im Graph</div>';
 });
 $('gFilter').onclick = () => {
-  const ts = Object.values(db.nodes).map(n => n.first);
-  G.t0 = ts.length ? Math.min(...ts) : Date.now(); G.t1 = Date.now();
-  const toV = t => Math.round((t - G.t0) / Math.max(1, G.t1 - G.t0) * 1000);
-  const tv = G.tMax === Infinity ? 1000 : toV(G.tMax), tvMin = G.tMin === -Infinity ? 0 : toV(G.tMin);
   const chip = (id, on, label) => `<button class="chip${on ? ' on' : ''}" data-t="${id}">${label}</button>`;
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Ansicht</div>
@@ -1938,11 +1947,6 @@ $('gFilter').onclick = () => {
     <div class="frow" style="margin-top:8px">${chip('local', !!db.showLocal, 'Beim Antippen eigene Vorschläge einblenden')}</div>
     <div class="flab">Farbe nach</div>
     <div class="frow">${chip('c:topic', G.color === 'topic', 'Thema')}${chip('c:lang', G.color === 'lang', 'Sprache')}${chip('c:recent', G.color === 'recent', 'Zuletzt gelesen')}</div>
-    <div class="flab">Zeitraum</div>
-    <div class="frow" id="tquick">${[['7', 'Letzte 7 Tage'], ['30', 'Letzte 30 Tage'], ['90', 'Letzte 3 Monate'], ['all', 'Alles']].map(([d, l]) => `<button class="chip" data-tq="${d}">${l}</button>`).join('')}</div>
-    <div class="time" style="margin-top:8px"><span style="min-width:28px;text-align:left">Von</span><input type="range" id="tl0" min="0" max="1000" value="${tvMin}"><span id="tlv0"></span></div>
-    <div class="time"><span style="min-width:28px;text-align:left">Bis</span><input type="range" id="tl" min="0" max="1000" value="${tv}"><span id="tlv"></span></div>
-    <div class="time"><button class="btn sec" id="play" type="button">▶ Zeitreise</button></div>
     <div class="flab">Legende</div>
     <div class="legend2"><div><i style="border-color:var(--accent)"></i>geklickt (Pfeil = Richtung)</div><div><i style="border-color:var(--sem);border-top-style:dashed"></i>verlinkt, aber nicht geklickt</div><div><i style="border-color:var(--ghost);border-top-style:dotted"></i>Vorschlag (noch nicht gelesen)</div><div><i style="border-color:var(--accent2)"></i>Wikidata-Beziehung (z. B. „Teil von“)</div><div><i style="border-color:var(--ink);border-top-style:dashed"></i>gefundener Verbindungsweg</div></div>
     <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben). Bei „Fair nach Themen“ werden die Plätze reihum auf deine Themen verteilt, damit kein stark vernetztes Thema alles belegt; bei „Beste insgesamt“ zählt nur die Punktzahl. Welche Faktoren in die Punktzahl eingehen, stellst du oben unter „Vorschläge bewerten nach“ ein. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>
@@ -1982,38 +1986,55 @@ $('gFilter').onclick = () => {
     else { G[t] = !G[t]; b.classList.toggle('on', G[t]); if (t !== 'lbl') { rebuild(); heat(.3); gnLabel(); } }
     requestDraw();
   });
-  const tLabels = () => {
-    $('tlv0').textContent = G.tMin === -Infinity ? 'Anfang' : fmtDate(G.tMin);
-    $('tlv').textContent = G.tMax === Infinity ? 'Heute' : fmtDate(G.tMax);
-    const span = G.tMax === Infinity && G.tMin !== -Infinity ? Math.round((Date.now() - G.tMin) / 864e5) : null;
-    pb.querySelectorAll('[data-tq]').forEach(c => c.classList.toggle('on', c.dataset.tq === 'all' ? G.tMin === -Infinity && G.tMax === Infinity : span === +c.dataset.tq));
-  };
-  const setRange = (v0, v1, src) => {       // keep "Von" <= "Bis": the handle you move pushes the other one
-    if (v0 > v1) { if (src === 0) v1 = v0; else v0 = v1; $('tl0').value = v0; $('tl').value = v1; }
-    G.tMin = v0 <= 0 ? -Infinity : G.t0 + (G.t1 - G.t0) * v0 / 1000;
-    G.tMax = v1 >= 1000 ? Infinity : G.t0 + (G.t1 - G.t0) * v1 / 1000;
-    tLabels(); rebuild(); heat(.25);
-  };
-  const setT = v => setRange(+$('tl0').value, v, 1);
-  $('tl').addEventListener('input', e => setRange(+$('tl0').value, +e.target.value, 1));
-  $('tl0').addEventListener('input', e => setRange(+e.target.value, +$('tl').value, 0));
-  pb.querySelectorAll('[data-tq]').forEach(c => c.onclick = () => {
-    const d = c.dataset.tq;
-    if (d === 'all') { G.tMin = -Infinity; G.tMax = Infinity; $('tl0').value = 0; $('tl').value = 1000; }
-    else { G.tMax = Infinity; G.tMin = Math.max(G.t0, Date.now() - d * 864e5); $('tl').value = 1000; $('tl0').value = Math.max(0, toV(G.tMin)); if (G.tMin <= G.t0) G.tMin = -Infinity; }
-    tLabels(); rebuild(); heat(.25); fit();
-  });
-  tLabels();
-  $('play').onclick = () => {
-    $('pop').classList.remove('on');
-    let v = +$('tl0').value; clearInterval(G.play);
-    const lab = $('playlab'); lab.classList.add('on');
-    G.play = setInterval(() => {
-      v = Math.min(1000, v + 25); setT(v);
-      lab.textContent = v >= 1000 ? 'Heute' : fmtDate(G.tMax);
-      if (v >= 1000) { clearInterval(G.play); setTimeout(() => lab.classList.remove('on'), 1200); fit(); }
-    }, 130);
-  };
+};
+
+/* ---------- time window: one slider moves a window of adjustable length ---------- */
+const SPANS = [[0, 'Alles'], [7, 'Woche'], [30, 'Monat'], [91, '3 Monate'], [365, 'Jahr']];
+const TW = { span: 0, v: 1000 };
+function twBounds() {
+  const ts = Object.values(db.nodes).map(n => n.first);
+  const t0 = ts.length ? Math.min(...ts) : Date.now(), t1 = Date.now();
+  return { t0, t1 };
+}
+function twApply(fitAfter) {
+  const { t0, t1 } = twBounds(), d = TW.span * 864e5;
+  const sl = $('twin'), lab = $('tlab');
+  if (!TW.span) {                                   // "Alles": the slider is a classic "up to" date
+    G.tMin = -Infinity;
+    G.tMax = TW.v >= 1000 ? Infinity : t0 + (t1 - t0) * TW.v / 1000;
+    lab.textContent = TW.v >= 1000 ? 'Alles bis heute' : 'bis ' + fmtDate(G.tMax);
+  } else {
+    const lo = Math.min(t1, t0 + d);                // window end can move from (start + span) to today
+    const end = TW.v >= 1000 ? t1 : lo + (t1 - lo) * TW.v / 1000;
+    G.tMax = TW.v >= 1000 ? Infinity : end;
+    G.tMin = end - d;
+    lab.textContent = fmtDate(end - d) + ' – ' + (TW.v >= 1000 ? 'heute' : fmtDate(end));
+  }
+  sl.value = TW.v;
+  $('tspan').textContent = SPANS.find(x => x[0] === TW.span)[1];
+  $('timebar').classList.toggle('active', !!TW.span || TW.v < 1000);
+  rebuild(); heat(.25);
+  if (fitAfter) fit();
+}
+let twT = 0;
+$('twin').addEventListener('input', e => {
+  TW.v = +e.target.value;
+  const now = performance.now(); if (now - twT < 90) { clearTimeout(twApply._t); twApply._t = setTimeout(() => twApply(), 90); return; }
+  twT = now; twApply();
+});
+$('tspan').onclick = () => {                         // cycle window length
+  const i = SPANS.findIndex(x => x[0] === TW.span);
+  TW.span = SPANS[(i + 1) % SPANS.length][0];
+  if (!TW.span) TW.v = 1000;
+  twApply(true);
+};
+$('tplay').onclick = () => {                         // slide the window from the beginning to today
+  if (G.play) { clearInterval(G.play); G.play = null; $('tplay').textContent = '▶'; return; }
+  TW.v = 0; $('tplay').textContent = '❚❚';
+  G.play = setInterval(() => {
+    TW.v = Math.min(1000, TW.v + 20); twApply();
+    if (TW.v >= 1000) { clearInterval(G.play); G.play = null; $('tplay').textContent = '▶'; fit(); }
+  }, 120);
 };
 
 /* pointer: pan, pinch, drag nodes, tap, double-tap */
@@ -2815,7 +2836,7 @@ function tipGraph() {
     { el: nodeRect(n => !n.ghost), round: true, pad: 8, text: '<b>Jeder volle Kreis ist ein Artikel, den du gelesen hast.</b> Größe = wie oft, Farbe = Thema. Antippen zeigt Details und Nachbarn.' },
     { el: nodeRect(n => n.ghost), round: true, pad: 8, text: '<b>Gestrichelte Kreise sind Vorschläge</b>: noch nicht gelesen, aber deine Artikel verweisen darauf und andere Leser klicken oft dorthin. Antippen für Vorschau und Fundstellen.' },
     { el: () => $('clusters').children.length ? $('clusters') : null, text: '<b>Deine Themen</b> – automatisch erkannt. Antippen hebt ein Thema hervor. Weit herausgezoomt werden Themen zu Blasen.' },
-    { el: () => $('gFilter'), round: true, text: '<b>Ansicht</b>: was der Graph zeigt, wie Vorschläge berechnet werden, Zeitreise und Legende.' }
+    { el: () => $('gFilter'), round: true, text: '<b>Ansicht</b>: was der Graph zeigt, wie Vorschläge berechnet werden, und die Legende. Den Zeitraum stellst du unten im Graph ein.' }
   ]);
 }
 function tipNotes() { tip('notes', [{ el: () => $('notesList'), text: '<b>Notizen</b>: alle Markierungen und Kommentare, durchsuchbar und nach Farbe filterbar. Antippen springt zur Stelle im Artikel; unten kannst du alles für Obsidian exportieren.' }]); }
