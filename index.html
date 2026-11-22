@@ -514,7 +514,11 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 const S_KEY = 'wikigraph.v1';
 const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {}, hidden: [], showLocal: true, rank: { links: true, cs: true, hl: true, fair: true } });
 const VW = () => { const v = Object.assign({ start: 'local', imp: 0, edgeK: 3, bubbles: true, fade: true, layout: 'net', islands: true, ghostLines: false }, db.view || {}); if (v.layout !== 'time') v.layout = 'net'; return v; };
-const RK = () => Object.assign({ links: true, cs: true, hl: true, fair: true }, db.rank || {});
+const RK = () => {
+  const r = db.rank;   // one-time: "Links deiner Artikel" is now off by default, also for saved settings
+  if (r && !r.m1) { if (r.cs !== false || r.hl !== false) r.links = false; r.m1 = 1; }
+  return Object.assign({ links: false, cs: true, hl: true, fair: true }, r || {});
+};
 /* identifier / meta articles that are linked from citations, not topics */
 const IDENT = new Set([
   'Digital Object Identifier', 'DOI', 'Internationale Standardnummer für fortlaufende Sammelwerke', 'ISSN', 'Internationale Standardbuchnummer', 'ISBN',
