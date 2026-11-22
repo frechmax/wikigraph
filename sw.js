@@ -1,4 +1,4 @@
-/* WikiGraph service worker: app works offline, articles you've read stay readable */
+/* WikiWeb service worker: app works offline, articles you've read stay readable */
 const V = 'wg-v1';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg?v=4', 'icons/apple-touch-icon.png?v=4', 'icons/icon-192.png?v=4', 'icons/icon-512.png?v=4', 'icons/favicon-32.png?v=4'];
 

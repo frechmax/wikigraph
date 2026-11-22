@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#f7f6f2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="WikiGraph">
-<title>WikiGraph</title>
+<meta name="apple-mobile-web-app-title" content="WikiWeb">
+<title>WikiWeb</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=4">
 <link rel="icon" type="image/svg+xml" href="icons/icon.svg?v=4">
@@ -380,7 +380,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 <!-- SEARCH -->
 <section class="view" id="v-search">
   <div class="bar">
-    <h1 class="brand"><svg class="logo" viewBox="78 84 362 350" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M132 380 L 214 300 L 262 336 L 330 228" stroke-width="15"/><path d="M352 196 L 384 142" stroke-width="11" stroke-dasharray="1 20"/></g><g fill="currentColor"><circle cx="132" cy="380" r="44"/><circle cx="214" cy="300" r="30"/><circle cx="262" cy="336" r="24"/><circle cx="330" cy="228" r="30"/></g><circle cx="392" cy="128" r="20" fill="none" stroke="var(--logoacc)" stroke-width="11"/></svg><span>WikiGraph</span></h1>
+    <h1 class="brand"><svg class="logo" viewBox="78 84 362 350" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M132 380 L 214 300 L 262 336 L 330 228" stroke-width="15"/><path d="M352 196 L 384 142" stroke-width="11" stroke-dasharray="1 20"/></g><g fill="currentColor"><circle cx="132" cy="380" r="44"/><circle cx="214" cy="300" r="30"/><circle cx="262" cy="336" r="24"/><circle cx="330" cy="228" r="30"/></g><circle cx="392" cy="128" r="20" fill="none" stroke="var(--logoacc)" stroke-width="11"/></svg><span>WikiWeb</span></h1>
     <form class="searchrow" id="sform">
       <input id="q" type="search" placeholder="Wikipedia durchsuchen" autocomplete="off" enterkeyhint="search">
       <select id="lang" aria-label="Sprache">
@@ -476,18 +476,18 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
       <button class="btn warn" id="reset">Alles löschen</button>
     </div>
     <input type="file" id="file" accept="application/json,.json" hidden>
-    <h2 class="sec">Wikipedia-Links in WikiGraph öffnen</h2>
+    <h2 class="sec">Wikipedia-Links in WikiWeb öffnen</h2>
     <div class="note about">
       <p><b>Link einfügen:</b> Kopierten Wikipedia-Link einfach ins Suchfeld einfügen – der Artikel öffnet sich direkt.</p>
-      <p><b>Android:</b> Wenn WikiGraph als App installiert ist, im Browser auf einer Wikipedia-Seite <i>Teilen → WikiGraph</i>.</p>
+      <p><b>Android:</b> Wenn WikiWeb als App installiert ist, im Browser auf einer Wikipedia-Seite <i>Teilen → WikiWeb</i>.</p>
       <p><b>iPhone:</b> Kurzbefehl anlegen (siehe unten) oder das Lesezeichen nutzen.</p>
-      <p><b>Lesezeichen (alle Browser):</b> Als Lesezeichen speichern; auf einer Wikipedia-Seite antippen, öffnet sie in WikiGraph.</p>
+      <p><b>Lesezeichen (alle Browser):</b> Als Lesezeichen speichern; auf einer Wikipedia-Seite antippen, öffnet sie in WikiWeb.</p>
       <div class="btns"><button class="btn sec" id="bmCopy">Lesezeichen-Code kopieren</button></div>
     </div>
-    <h2 class="sec">Über WikiGraph</h2>
+    <h2 class="sec">Über WikiWeb</h2>
     <div class="note about">
-      <p>WikiGraph zeigt Artikel der <a href="https://www.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a> und speichert, was du liest, als Graph. Die Artikeltexte stammen von den Autorinnen und Autoren der Wikipedia und stehen unter <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de" target="_blank" rel="noopener">CC BY-SA 4.0</a>; unter jedem Artikel steht ein Link zu Original und Autorenliste. Bilder stammen von Wikimedia Commons und haben eigene Lizenzen (antippen → Dateiseite).</p>
-      <p>Weitere Daten: <a href="https://meta.wikimedia.org/wiki/Research:Wikipedia_clickstream" target="_blank" rel="noopener">Wikipedia Clickstream</a> und <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> (beide CC0). WikiGraph ist kein Angebot der Wikimedia Foundation.</p>
+      <p>WikiWeb zeigt Artikel der <a href="https://www.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a> und speichert, was du liest, als Graph. Die Artikeltexte stammen von den Autorinnen und Autoren der Wikipedia und stehen unter <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de" target="_blank" rel="noopener">CC BY-SA 4.0</a>; unter jedem Artikel steht ein Link zu Original und Autorenliste. Bilder stammen von Wikimedia Commons und haben eigene Lizenzen (antippen → Dateiseite).</p>
+      <p>Weitere Daten: <a href="https://meta.wikimedia.org/wiki/Research:Wikipedia_clickstream" target="_blank" rel="noopener">Wikipedia Clickstream</a> und <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> (beide CC0). WikiWeb ist kein Angebot der Wikimedia Foundation.</p>
       <p><b>Datenschutz:</b> Dein Verlauf, deine Markierungen und Einstellungen bleiben nur in diesem Browser auf diesem Gerät. Es gibt keine Accounts und keinen eigenen Server; die App ruft Inhalte direkt bei Wikipedia, Wikidata und GitHub ab.</p>
     </div>
     <div class="btns" style="margin-top:8px"><button class="btn sec" id="introAgain">Einführung noch mal zeigen</button></div>
@@ -2564,7 +2564,7 @@ function renderNotes() {
 }
 $('notesQ').addEventListener('input', () => { notesFilter.q = $('notesQ').value.trim(); renderNotes(); });
 function notesMarkdown() {
-  let md = `# WikiGraph – Markierungen\n\nExport vom ${new Date().toLocaleDateString('de-DE')}\n`;
+  let md = `# WikiWeb – Markierungen\n\nExport vom ${new Date().toLocaleDateString('de-DE')}\n`;
   for (const key in db.hl || {}) {
     const n = db.nodes[key], title = n ? n.title : key.slice(key.indexOf(':') + 1), lang = key.slice(0, key.indexOf(':'));
     md += `\n## [[${title}]]\n[Wikipedia](https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))})\n`;
@@ -2576,7 +2576,7 @@ function notesMarkdown() {
   }
   return md;
 }
-$('notesMd').onclick = () => download(`wikigraph-markierungen-${stamp()}.md`, notesMarkdown(), 'text/markdown');
+$('notesMd').onclick = () => download(`wikiweb-markierungen-${stamp()}.md`, notesMarkdown(), 'text/markdown');
 $('notesCopy').onclick = async () => { try { await navigator.clipboard.writeText(notesMarkdown()); toast('Markdown kopiert'); } catch (e) { toast('Kopieren nicht möglich'); } };
 
 /* ---------- "Wie hängen X und Y zusammen?" ---------- */
@@ -2678,7 +2678,7 @@ function loadScript(src) { return new Promise((res, rej) => { const s = document
 async function exportVault() {
   if (!window.JSZip) { try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'); } catch (e) { toast('Zip-Bibliothek nicht ladbar – bist du online?'); return; } }
   if (G.dirty || !G.nodes.length) rebuild();
-  const zip = new JSZip(), dir = zip.folder('WikiGraph');
+  const zip = new JSZip(), dir = zip.folder('WikiWeb');
   const keys = Object.keys(db.nodes), titleCount = {};
   keys.forEach(k => { const t = db.nodes[k].title; titleCount[t] = (titleCount[t] || 0) + 1; });
   const fname = k => { const n = db.nodes[k]; let t = n.title.replace(/[\\/:*?"<>|#^\[\]]/g, '-'); if (titleCount[n.title] > 1) t += ' (' + n.lang + ')'; return t; };
@@ -2693,7 +2693,7 @@ async function exportVault() {
     if (n.qid) md += `wikidata: ${n.qid}\n`;
     md += `gelesen: ${n.visits.length}\nzuerst: ${day(n.first)}\nzuletzt: ${day(n.last || n.first)}\n`;
     if (cl) md += `thema: "${cl.name.replace(/"/g, "'")}"\n`;
-    md += `tags: [wikigraph${cl ? ', thema/' + cl.name.replace(/[^\p{L}\p{N}_-]+/gu, '-') : ''}]\n---\n\n# ${n.title}\n`;
+    md += `tags: [wikiweb${cl ? ', thema/' + cl.name.replace(/[^\p{L}\p{N}_-]+/gu, '-') : ''}]\n---\n\n# ${n.title}\n`;
     if (n.desc) md += `\n*${n.desc}*\n`;
     const hs = (db.hl || {})[k];
     if (hs && hs.length) {
@@ -2719,14 +2719,14 @@ async function exportVault() {
     if (sug.length) md += `\n## Vorschläge\n${sug.map(x => `- ${wl(x.k)}${x.c > 1 ? ` (${x.c} Links)` : ''}`).join('\n')}\n`;
     dir.file(fname(k) + '.md', md);
   }
-  let idx = `# WikiGraph\n\nExport vom ${new Date().toLocaleDateString('de-DE')} · ${keys.length} Artikel\n`;
+  let idx = `# WikiWeb\n\nExport vom ${new Date().toLocaleDateString('de-DE')} · ${keys.length} Artikel\n`;
   for (const c of G.clusters) idx += `\n## ${c.name}\n${c.members.map(m => '- ' + wl(m.key)).join('\n')}\n`;
   const rest = keys.filter(k => { const g = G.by.get(k); return !g || g.cl < 0; });
   if (rest.length) idx += `\n## Ohne Thema\n${rest.map(k => '- ' + wl(k)).join('\n')}\n`;
-  dir.file('_WikiGraph Index.md', idx);
+  dir.file('_WikiWeb Index.md', idx);
   const blob = await zip.generateAsync({ type: 'blob' });
   try {
-    const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `WikiGraph-Vault-${stamp()}.zip`; document.body.appendChild(a); a.click(); a.remove();
+    const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `WikiWeb-Vault-${stamp()}.zip`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000); toast('Vault exportiert');
   } catch (e) { toast('Download nicht möglich'); }
 }
@@ -2763,7 +2763,7 @@ function download(name, text, type) {
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
 document.querySelectorAll('#themeSel .chip').forEach(c => c.onclick = () => setTheme(c.dataset.th));
-$('exJson').onclick = () => download(`wikigraph-${stamp()}.json`, JSON.stringify(db), 'application/json');
+$('exJson').onclick = () => download(`wikiweb-${stamp()}.json`, JSON.stringify(db), 'application/json');
 $('imJson').onclick = () => $('file').click();
 $('file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -3019,7 +3019,7 @@ function ttl() {
   }
   return s;
 }
-$('exTtl').onclick = () => download(`wikigraph-${stamp()}.ttl`, ttl(), 'text/turtle');
+$('exTtl').onclick = () => download(`wikiweb-${stamp()}.ttl`, ttl(), 'text/turtle');
 $('cpTtl').onclick = async () => { try { await navigator.clipboard.writeText(ttl()); toast('Turtle kopiert'); } catch (e) { toast('Kopieren nicht möglich'); } };
 $('unhide').onclick = () => { const c = (db.hidden || []).length; db.hidden = []; db.hts = {}; db.unhideTs = Date.now(); save(); G.dirty = true; toast(c ? c + ' Vorschläge wieder sichtbar' : 'Keine ausgeblendeten Vorschläge'); };
 $('reset').onclick = () => {
@@ -3100,7 +3100,7 @@ function tipData() { tip('data', [{ el: () => $('exJson'), text: '<b>Deine Daten
 function tipSel() { tip('sel', [{ el: () => $('selbar'), text: '<b>Farbe antippen</b> = markieren. <b>✎ Kommentar</b> = markieren und einen Gedanken dazu notieren.' }]); }
 
 const INTRO = [
-  { t: 'Willkommen bei WikiGraph', h: `<div class="ilogo">LOGO</div><p>Lies Wikipedia wie gewohnt – alles, was du liest, wächst automatisch zu deinem persönlichen <b>Wissensgraphen</b>.</p><p>Kurze Tipps erscheinen direkt dort, wo du sie brauchst.</p>` }
+  { t: 'Willkommen bei WikiWeb', h: `<div class="ilogo">LOGO</div><p>Lies Wikipedia wie gewohnt – alles, was du liest, wächst automatisch zu deinem persönlichen <b>Wissensgraphen</b>.</p><p>Kurze Tipps erscheinen direkt dort, wo du sie brauchst.</p>` }
 ];
 function showIntro(i) {
   const el = $('intro'), last = i === INTRO.length - 1, c = INTRO[i];
@@ -3112,7 +3112,7 @@ function showIntro(i) {
   const bk = el.querySelector('[data-back]'); if (bk) bk.onclick = () => showIntro(i - 1);
   const sk = el.querySelector('[data-skip]'); if (sk) sk.onclick = done;
 }
-const BOOKMARKLET = "javascript:location.href='https://frechmax.github.io/wikigraph/#url='+encodeURIComponent(location.href)";
+const BOOKMARKLET = "javascript:location.href='https://wikiweb.vercel.app/#url='+encodeURIComponent(location.href)";
 $('bmCopy').onclick = async () => { try { await navigator.clipboard.writeText(BOOKMARKLET); toast('Kopiert – als URL eines neuen Lesezeichens einfügen'); } catch (e) { toast('Kopieren nicht möglich'); } };
 $('introAgain').onclick = () => { db.tips = {}; save(); showIntro(0); toast('Die Tipps erscheinen wieder an den passenden Stellen'); };
 async function boot() {

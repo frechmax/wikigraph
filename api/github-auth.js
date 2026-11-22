@@ -1,4 +1,4 @@
-// WikiGraph – GitHub-Login (Device Flow) als Vercel Function.
+// WikiWeb – GitHub-Login (Device Flow) als Vercel Function.
 // Leitet nur die zwei Device-Flow-Aufrufe an GitHub weiter, weil GitHub dafür kein CORS erlaubt.
 // Kein Secret nötig, speichert nichts. Umgebungsvariable in Vercel: CLIENT_ID (Client ID der GitHub OAuth App).
 export const config = { runtime: 'edge' };

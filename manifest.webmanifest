@@ -1,6 +1,6 @@
 {
-  "name": "WikiGraph",
-  "short_name": "WikiGraph",
+  "name": "WikiWeb",
+  "short_name": "WikiWeb",
   "description": "Wikipedia lesen und den eigenen Leseverlauf als Graph erkunden",
   "start_url": "./",
   "scope": "./",
