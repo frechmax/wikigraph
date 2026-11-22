@@ -245,6 +245,9 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .flab{font-size:12px;color:var(--muted);margin:14px 0 6px}
 #popbody .time{margin-top:0}
 #popbody .time .btn{padding:6px 12px}
+.recleg{position:absolute;left:12px;top:calc(var(--gtop, 60px) + 10px);z-index:2;display:none;align-items:center;gap:8px;font-size:12px;color:var(--muted);background:var(--legendbg);border-radius:10px;padding:6px 10px;pointer-events:none}
+.recleg.on{display:flex}
+.recleg b{display:block;width:90px;height:8px;border-radius:4px}
 .legend2{font-size:13px;color:var(--muted);line-height:1.9}
 .legend2 i{display:inline-block;width:20px;height:0;border-top:2px solid;vertical-align:middle;margin-right:8px}
 .sheet .hint{font-size:11px;opacity:.8}
@@ -429,6 +432,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
     <div class="clusters" id="clusters"></div>
   </div>
   <canvas id="cv"></canvas>
+  <div id="recLeg" class="recleg"></div>
   <div class="gempty" id="gempty" style="display:none">Lies ein paar Artikel, dann wächst hier dein Graph.</div>
   <div class="focuschip" id="focuschip"></div>
   <div class="playlab" id="playlab"></div>
@@ -622,6 +626,7 @@ function applyLayout() {
   if (sp) { if (!wasSplit) graphEnter(); else { sizeCanvas(); requestDraw(); } }
   else if (wasSplit && view !== 'graph' && G.raf) { cancelAnimationFrame(G.raf); G.raf = 0; }
   wasSplit = sp;
+  if (typeof recLegend === 'function') recLegend();
 }
 wideMQ.addEventListener ? wideMQ.addEventListener('change', () => applyLayout()) : wideMQ.addListener(() => applyLayout());
 function show(v) {
@@ -1573,6 +1578,7 @@ function addTemp(n) {
   if (sug.length) heat(.15);
 }
 function rebuild() {
+  G.recSig = null; setTimeout(recLegend, 0);
   clearTemp();
   const an = analyze(G.tMax, G.tMin);
   const old = G.by, by = new Map(), nodes = [];
@@ -1724,7 +1730,7 @@ function setFocus(key, depth) {
     for (const [par, L] of kids) L.forEach((m, j) => { const t = A.get(par) + (L.length > 1 ? (j / (L.length - 1) - .5) * slot * .9 : 0), R2 = R1 + 120 + (j % 2) * 45; m.x = c.x + Math.cos(t) * R2; m.y = c.y + Math.sin(t) * R2; m.vx = m.vy = 0; });
     G.alpha = Math.max(G.alpha, .35); for (let i = 0; i < 160; i++) tick();
   }
-  requestDraw();
+  recLegend(); requestDraw();
 }
 function computeFocus() {
   G.focusSet = null; G.fN = null;
@@ -1886,9 +1892,33 @@ function stepAnim() {
 const toScreen = (x, y) => [G.W / 2 + G.cam.x + x * G.cam.k, G.H / 2 + G.cam.y + y * G.cam.k];
 const toWorld = (sx, sy) => [(sx - G.W / 2 - G.cam.x) / G.cam.k, (sy - G.H / 2 - G.cam.y) / G.cam.k];
 const shown = n => !G.focusSet || G.focusSet.has(n);
+/* "Zuletzt gelesen": colour ramp by rank of the last visit (newest = hot, oldest = cool), so it spreads over any time span */
+const REC = ['#e03131', '#f76707', '#f59f00', '#94a83a', '#3b9a8f', '#4c6ef5', '#7c7f9e'];
+function recRank() {
+  const sig = dbRev + '|' + G.nodes.length + '|' + (G.focus || '');
+  if (G.recSig === sig) return G.rec;
+  const L = G.nodes.filter(n => !n.ghost && shown(n)).sort((a, b) => b.last - a.last), m = new Map();
+  L.forEach((n, i) => m.set(n, L.length > 1 ? i / (L.length - 1) : 0));
+  G.recSig = sig; G.rec = m; G.recSpan = L.length ? [L[0].last, L[L.length - 1].last] : null;
+  return m;
+}
+function recColor(t) {
+  const x = t * (REC.length - 1), i = Math.min(REC.length - 2, Math.floor(x)), f = x - i;
+  const h = c => [1, 3, 5].map(j => parseInt(c.slice(j, j + 2), 16)), a = h(REC[i]), b = h(REC[i + 1]);
+  return '#' + a.map((v, j) => Math.round(v + (b[j] - v) * f).toString(16).padStart(2, '0')).join('');
+}
+function recLegend() {
+  const el = $('recLeg'); if (!el) return;
+  const on = G.color === 'recent' && gOn();
+  if (!on) { el.classList.remove('on'); return; }
+  recRank();
+  const ago = t => { const d = Math.round((Date.now() - t) / 864e5); return d <= 0 ? 'heute' : d === 1 ? 'gestern' : 'vor ' + d + ' Tagen'; };
+  el.innerHTML = G.recSpan ? `<span>${ago(G.recSpan[0])}</span><b style="background:linear-gradient(90deg,${REC.join(',')})"></b><span>${ago(G.recSpan[1])}</span>` : '';
+  el.classList.add('on');
+}
 function nodeColor(n) {
   if (G.color === 'lang') return n.lang === 'de' ? TC.accent : TC.accent2;
-  if (G.color === 'recent') return TC.accent;
+  if (G.color === 'recent') { if (n.ghost) return TC.sem; const t = recRank().get(n); return t === undefined ? TC.sem : recColor(t); }
   return n.cl >= 0 ? pal(n.cl) : TC.sem;
 }
 function bubbleT() {
@@ -2007,8 +2037,7 @@ function draw() {
     if (!shown(n)) continue;
     if (n.x < vx0 - 20 || n.x > vx1 + 20 || n.y < vy0 - 20 || n.y > vy1 + 20) continue;
     let al = lit(n) ? 1 : .15;
-    if (G.color === 'recent' && !n.ghost) al *= Math.max(.18, 1 - (now - n.last) / (30 * 864e5));
-    else if (V.fade && !n.ghost && n.key !== curKey) al *= Math.max(.4, 1 - (now - n.last) / (180 * 864e5));
+    if (G.color !== 'recent' && V.fade && !n.ghost && n.key !== curKey) al *= Math.max(.4, 1 - (now - n.last) / (180 * 864e5));
     al *= nodeA;
     ctx.globalAlpha = al;
     ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 6.2832);
@@ -2193,7 +2222,7 @@ $('gFilter').onclick = () => {
     }
     if (t === 'wd') { db.showWd = !db.showWd; b.classList.toggle('on', db.showWd); save(); if (db.showWd && (!db.wd || db.wd.n !== Object.values(db.nodes).filter(n => n.qid).length)) loadWikidata(false); rebuild(); heat(.25); return; }
     if (t === 'local') { db.showLocal = !db.showLocal; save(); b.classList.toggle('on', db.showLocal); if (G.sel) select(G.sel); return; }
-    if (t.startsWith('c:')) { G.color = t.slice(2); pb.querySelectorAll('[data-t^="c:"]').forEach(x => x.classList.toggle('on', x === b)); }
+    if (t.startsWith('c:')) { G.color = t.slice(2); G.recSig = null; pb.querySelectorAll('[data-t^="c:"]').forEach(x => x.classList.toggle('on', x === b)); recLegend(); }
     else { G[t] = !G[t]; b.classList.toggle('on', G[t]); if (t !== 'lbl') { rebuild(); heat(.3); gnLabel(); } }
     requestDraw();
   });
