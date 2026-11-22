@@ -1660,6 +1660,7 @@ function rebuild() {
   if (G.focus && !by.has(G.focus)) { G.focus = null; G.focusSaved = null; }
   computeFocus();
   layoutTargets();
+  $('tspan').style.display = twSpans().length > 1 ? '' : 'none';
   renderGraphHeader(an);
   $('gempty').style.display = nodes.length ? 'none' : 'flex';
   G.dirty = false;
@@ -2253,7 +2254,9 @@ function twApply(fitAfter) {
     lab.textContent = fmtDate(end - d) + ' – ' + (TW.v >= 1000 ? 'heute' : fmtDate(end));
   }
   sl.value = TW.v;
+  if (!twSpans().some(x => x[0] === TW.span)) { TW.span = 0; return twApply(fitAfter); }
   $('tspan').textContent = SPANS.find(x => x[0] === TW.span)[1];
+  $('tspan').style.display = twSpans().length > 1 ? '' : 'none';
   $('timebar').classList.toggle('active', !!TW.span || TW.v < 1000);
   rebuild(); heat(.25);
   if (fitAfter) fit();
@@ -2264,9 +2267,11 @@ $('twin').addEventListener('input', e => {
   const now = performance.now(); if (now - twT < 90) { clearTimeout(twApply._t); twApply._t = setTimeout(() => twApply(), 90); return; }
   twT = now; twApply();
 });
+// only offer window lengths that are shorter than the time you have actually been reading
+function twSpans() { const { t0, t1 } = twBounds(); return SPANS.filter(x => !x[0] || x[0] * 864e5 < t1 - t0); }
 $('tspan').onclick = () => {                         // cycle window length
-  const i = SPANS.findIndex(x => x[0] === TW.span);
-  TW.span = SPANS[(i + 1) % SPANS.length][0];
+  const S = twSpans(), i = S.findIndex(x => x[0] === TW.span);
+  TW.span = S[(i + 1) % S.length][0];
   if (!TW.span) TW.v = 1000;
   twApply(true);
 };
