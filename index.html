@@ -70,6 +70,10 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .rbar .ttl{flex:1;min-width:0;font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .icobtn{border:0;background:none;padding:6px;border-radius:8px;display:flex}
 .icobtn svg{width:22px;height:22px}
+.icobtn.busy svg{animation:wgspin 1.6s ease-in-out infinite}
+@keyframes wgspin{50%{transform:scale(.82) rotate(60deg)}}
+.chip.act{color:var(--ink)}
+.chip.act:active{background:var(--btn2)}
 .rmeta{font-size:13px;color:var(--muted);margin-top:4px;display:flex;gap:4px;align-items:center;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
 .rmeta::-webkit-scrollbar{display:none}
 .rmeta:empty{display:none}
@@ -411,6 +415,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
       <div class="gtitle"><div class="gstat" id="gstat"></div></div>
       <button class="icobtn" id="gSearchBtn" aria-label="Im Graph suchen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button>
       <button class="icobtn" id="gHere" aria-label="Aktueller Artikel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg></button>
+      <button class="icobtn" id="gUntangle" aria-label="Entwirren" title="Entwirren"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8.3M18 8l-5 8.3"/></svg></button>
       <button class="icobtn" id="gFit" aria-label="Alles zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       <button class="icobtn" id="gFilter" aria-label="Ansicht"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
     </div>
@@ -502,7 +507,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 /* ---------- storage ---------- */
 const S_KEY = 'wikigraph.v1';
 const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {}, hidden: [], showLocal: true, rank: { links: true, cs: true, hl: true, fair: true } });
-const VW = () => Object.assign({ start: 'local', imp: 0, edgeK: 3, bubbles: true, fade: true, layout: 'net', islands: true, ghostLines: false }, db.view || {});
+const VW = () => { const v = Object.assign({ start: 'local', imp: 0, edgeK: 3, bubbles: true, fade: true, layout: 'net', islands: true, ghostLines: false }, db.view || {}); if (v.layout !== 'time') v.layout = 'net'; return v; };
 const RK = () => Object.assign({ links: true, cs: true, hl: true, fair: true }, db.rank || {});
 /* identifier / meta articles that are linked from citations, not topics */
 const IDENT = new Set([
@@ -1596,29 +1601,11 @@ function rebuild() {
   $('gempty').style.display = nodes.length ? 'none' : 'flex';
   G.dirty = false;
 }
-/* ---------- alternative arrangements: radial around one article, timeline ---------- */
+/* ---------- alternative arrangement: timeline ---------- */
 function layoutTargets() {
   const L = VW().layout; G.lanes = null; G.ticks = null;
   G.nodes.forEach(n => { n.tx = n.ty = undefined; });
-  if (L === 'radial') {
-    const curK = current ? K(current.lang, current.title) : null;
-    const c = (G.sel && G.by.get(G.sel.key)) || (curK && G.by.get(curK)) || G.nodes.filter(n => !n.ghost).sort((a, b) => b.w - a.w)[0];
-    if (!c) return;
-    G.rc = c.key;
-    const dist = new Map([[c, 0]]), par = new Map(); let front = [c];
-    while (front.length) { const nx = []; for (const m of front) for (const o of m.adj) if (!dist.has(o)) { dist.set(o, dist.get(m) + 1); par.set(o, m); nx.push(o); } front = nx; }
-    let maxD = 0; for (const d of dist.values()) maxD = Math.max(maxD, d);
-    G.nodes.forEach(n => { if (!dist.has(n)) dist.set(n, maxD + 1); });
-    const rings = new Map(); for (const [n, d] of dist) { if (!rings.has(d)) rings.set(d, []); rings.get(d).push(n); }
-    const ang = new Map([[c, 0]]); let R = 0;
-    for (const d of [...rings.keys()].sort((a, b) => a - b)) {
-      const ring = rings.get(d);
-      if (d === 0) { c.tx = 0; c.ty = 0; continue; }
-      R = Math.max(R + 130, ring.length * 30 / (2 * Math.PI));
-      ring.sort((a, b) => ((ang.get(par.get(a)) ?? 9) - (ang.get(par.get(b)) ?? 9)) || (a.cl - b.cl) || (a.ghost - b.ghost) || a.title.localeCompare(b.title));
-      ring.forEach((n, i) => { const t = -Math.PI / 2 + i / ring.length * 2 * Math.PI; ang.set(n, t); n.tx = Math.cos(t) * R; n.ty = Math.sin(t) * R; });
-    }
-  } else if (L === 'time') {
+  if (L === 'time') {
     const vis = G.nodes.filter(n => !n.ghost), first = n => (db.nodes[n.key] || {}).first || 0;
     vis.sort((a, b) => first(a) - first(b));
     const order = []; vis.forEach(n => { if (!order.includes(n.cl)) order.push(n.cl); });
@@ -1653,7 +1640,8 @@ function untangle(fresh) {
     }
   }
   G.boost = fresh ? 2.2 : 2.6; G.alpha = 1; loop();
-  toast(fresh ? 'Layout wird neu berechnet …' : 'Entwirren …');
+  const ib = $('gUntangle'); ib.classList.add('busy'); clearTimeout(G.ubT); G.ubT = setTimeout(() => ib.classList.remove('busy'), 2400);
+  if (fresh) toast('Layout wird neu berechnet …');
   setTimeout(() => fitNodes(G.nodes.filter(shown)), 2200);
 }
 /* focus = local graph: neighbours of one article get their own compact layout; the global layout is restored afterwards */
@@ -2084,15 +2072,16 @@ $('gq').addEventListener('input', () => {
     });
   if (!r.children.length) r.innerHTML = '<div class="gnone">Nicht im Graph</div>';
 });
+$('gUntangle').onclick = () => untangle(false);
 $('gFilter').onclick = () => {
   const chip = (id, on, label) => `<button class="chip${on ? ' on' : ''}" data-t="${id}">${label}</button>`;
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Ansicht</div>
     <div class="frow">${chip('ghost', G.ghost, 'Vorschläge')}${chip('sem', G.sem, 'Querverbindungen')}${chip('lbl', G.lbl, 'Labels')}${chip('wd', !!db.showWd, 'Wikidata-Beziehungen')}</div>
     <div class="flab">Anordnung</div>
-    <div class="frow">${chip('v:layout:net', VW().layout === 'net', 'Netz')}${chip('v:layout:radial', VW().layout === 'radial', 'Radial')}${chip('v:layout:time', VW().layout === 'time', 'Zeitstrahl')}</div>
-    <div class="frow" style="margin-top:8px"><button class="btn sec" id="untangle" type="button">✦ Entwirren</button><button class="btn sec" id="relayout" type="button">Layout neu</button></div>
-    <div class="frow" style="margin-top:8px">${chip('v:islands', VW().islands, 'Themen als Inseln')}${chip('v:ghostLines', VW().ghostLines, 'Vorschlags-Linien immer zeigen')}</div>
+    <div class="frow">${chip('v:layout:net', VW().layout === 'net', 'Netz')}${chip('v:layout:time', VW().layout === 'time', 'Zeitstrahl')}<button class="chip act" id="relayout" type="button">↻ Neu anordnen</button></div>
+    <div class="flab">Linien &amp; Gruppen</div>
+    <div class="frow">${chip('v:islands', VW().islands, 'Themen als Inseln')}${chip('v:ghostLines', VW().ghostLines, 'Vorschlags-Linien immer')}</div>
     <div class="flab">Beim Öffnen zeigen</div>
     <div class="frow">${chip('v:start:local', VW().start === 'local', 'Lokal um aktuellen Artikel')}${chip('v:start:all', VW().start !== 'local', 'Gesamten Graph')}</div>
     <div class="flab">Artikel zeigen ${G.hiddenCount ? `<span class="hint">(${G.hiddenCount} ausgeblendet)</span>` : ''}</div>
@@ -2114,7 +2103,6 @@ $('gFilter').onclick = () => {
     <p class="fnote"><b>Welche Vorschläge erscheinen?</b> Ein ungelesener Artikel wird vorgeschlagen, wenn mindestens 2 deiner gelesenen Artikel auf ihn verlinken. Gezeigt werden ${G.ghostMax || 0} davon (einstellbar oben). Bei „Fair nach Themen“ werden die Plätze reihum auf deine Themen verteilt, damit kein stark vernetztes Thema alles belegt; bei „Beste insgesamt“ zählt nur die Punktzahl. Welche Faktoren in die Punktzahl eingehen, stellst du oben unter „Vorschläge bewerten nach“ ein. Innerhalb eines Themas zählt ein Link aus einem kurzen, gezielten Artikel mehr als aus einem sehr langen mit Hunderten Links. Je mehr deiner Artikel verlinken, desto größer der Kreis. Die gepunkteten Linien führen zu den Artikeln, die verlinken. Die Farbe des Rings ist das Thema, aus dem die meisten Links kommen. Den stärksten Ausschlag gibt der <b>Wikipedia Clickstream</b>: wie viel Prozent der echten Wikipedia-Leser deiner Artikel auf einen Link tatsächlich weiterklicken (monatlich aktualisiert). Ist der Anteil hoch genug, reicht schon ein einziger deiner Artikel für einen Vorschlag. Links, die in deinen Markierungen stehen, zählen dreifach (gelber Punkt im Kreis). Artikel, die nur ein einziger gelesener Artikel verlinkt, findest du im Detailfenster des Knotens unter „Vorschläge von hier aus“.</p><div class="legend2"><div><i style="border:2px dashed var(--accent);width:12px;height:12px;border-radius:50%;vertical-align:-3px"></i>gerade geöffneter Artikel</div></div>
     <p class="fnote"><b>Übersicht bei vielen Artikeln:</b> Weit herausgezoomt werden Themen zu Blasen (Größe = Anzahl Artikel, Linien = Verbindungen zwischen Themen); antippen zoomt hinein. „Flüchtig“ = nur einmal geöffnet, nichts markiert, nicht weitergelesen. „Nur Kern“ = mehrfach gelesen, markiert oder mehrfach weitergelesen. Bei den Querverbindungen bleiben pro Artikel die stärksten sichtbar (gegenseitig verlinkt und oft geklickt zählt mehr); alle anderen erscheinen, wenn du den Artikel antippst.</p>`;
   $('pop').classList.add('on');
-  $('untangle').onclick = () => { $('pop').classList.remove('on'); untangle(false); };
   $('relayout').onclick = () => { $('pop').classList.remove('on'); untangle(true); };
   const gnLabel = () => { $('gnv').textContent = (G.ghostMax || 0) + ' von ' + (G.ghostAvail || 0); };
   gnLabel();
@@ -2289,7 +2277,6 @@ function tap(sx, sy, n) {
 
 /* sheet */
 function select(n) {
-  if (VW().layout === 'radial' && !n.temp && G.rc !== n.key && !G.pick) { G.sel = n; layoutTargets(); G.alpha = 1; loop(); }
   if (G.pick && n !== G.pick) { const a = G.pick; G.pick = null; findPath(a, n); return; }
   if (!n.temp) addTemp(n);
   G.sel = n; requestDraw();
