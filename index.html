@@ -2323,7 +2323,12 @@ function tap(sx, sy, n) {
     flyTo(sx - G.W / 2 - w[0] * k, sy - G.H / 2 - w[1] * k, k);
     return;
   }
-  lastTap = { t: now, x: sx, y: sy };
+  if (n && lastTap && lastTap.n === n && now - lastTap.t < 350 && !G.pick) {  // double click / double tap on a node = open the article
+    lastTap = null; const b = $('sheet').querySelector('[data-open]');
+    if (b) b.click(); else openTitle(n.lang, n.title, null);
+    return;
+  }
+  lastTap = { t: now, x: sx, y: sy, n };
   if (!n && bubbleT() > .5) {
     const [wx, wy] = toWorld(sx, sy);
     const g = bubbleGeo().filter(g => Math.hypot(g.x - wx, g.y - wy) < g.r).sort((a, b) => a.r - b.r)[0];
