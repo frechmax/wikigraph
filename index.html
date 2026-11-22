@@ -2452,7 +2452,7 @@ function editHl(id, focusNote) {
   const pb = $('popbody');
   pb.innerHTML = `<div class="pophead">Markierung</div>
     <blockquote class="hlq hl-${h.color}">${esc(h.text)}</blockquote>
-    <textarea id="hlnote" rows="3" placeholder="Kommentar, Gedanke, Frage …">${esc(h.note || '')}</textarea>
+    <textarea id="hlnote" rows="3" placeholder="Kommentar, Gedanke, Frage …" title="Strg + Enter speichert">${esc(h.note || '')}</textarea>
     <div class="hlbar">${Object.keys(HLC).map(c => `<button class="dot hl-${c}${c === h.color ? ' on' : ''}" data-c="${c}" aria-label="${HLC[c]}"></button>`).join('')}
       <span style="flex:1"></span><button class="btn sec" data-del>Löschen</button><button class="btn" data-ok>Fertig</button></div>`;
   $('pop').classList.add('on');
@@ -2463,6 +2463,7 @@ function editHl(id, focusNote) {
   ta.onchange = repaint;
   pb.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { h.color = b.dataset.c; h.upd = Date.now(); save(); pb.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b)); pb.querySelector('.hlq').className = 'hlq hl-' + h.color; repaint(); });
   pb.querySelector('[data-ok]').onclick = () => { h.note = ta.value; save(); repaint(); $('pop').classList.remove('on'); if (view === 'notes') renderNotes(); };
+  ta.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); pb.querySelector('[data-ok]').click(); } };
   pb.querySelector('[data-del]').onclick = () => {
     db.hl[key] = db.hl[key].filter(x => x.id !== h.id); if (!db.hl[key].length) delete db.hl[key];
     (db.del = db.del || {})[h.id] = Date.now();
