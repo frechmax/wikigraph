@@ -2472,11 +2472,14 @@ function locate(full, h) {
   }
   return best;
 }
+const HL_BLOCK = new Set(['UL', 'OL', 'DL', 'DIV', 'SECTION', 'TABLE', 'TBODY', 'THEAD', 'TFOOT', 'TR', 'DETAILS', 'BLOCKQUOTE', 'FIGURE', 'BODY']);
 function wrapRange(nodes, start, end, h) {
   let pos = 0; const marks = [];
   for (const n of nodes.slice()) {
     const len = n.data.length, a = Math.max(start, pos), b = Math.min(end, pos + len);
-    if (a < b && n.data.slice(a - pos, b - pos).trim() !== '' || (a < b && marks.length)) {
+    const ws = a < b && n.data.slice(a - pos, b - pos).trim() === '';
+    // whitespace between block elements (e.g. between <li>s) must not become a visible empty mark
+    if (a < b && (!ws || (marks.length && !HL_BLOCK.has(n.parentNode.nodeName)))) {
       let t = n;
       if (a - pos > 0) t = t.splitText(a - pos);
       if (b - a < t.data.length) t.splitText(b - a);
