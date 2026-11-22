@@ -3117,7 +3117,7 @@ function tipData() { tip('data', [{ el: () => $('exJson'), text: '<b>Deine Daten
 function tipSel() { tip('sel', [{ el: () => $('selbar'), text: '<b>Farbe antippen</b> = markieren. <b>✎ Kommentar</b> = markieren und einen Gedanken dazu notieren.' }]); }
 
 const INTRO = [
-  { t: 'Willkommen bei WikiWeb', h: `<div class="ilogo">LOGO</div><p>Lies Wikipedia wie gewohnt – alles, was du liest, wächst automatisch zu deinem persönlichen <b>Wissensgraphen</b>.</p><p>Nebenbei buddelt WikiWeb die <b>Geheimgänge zwischen deinen Rabbit Holes</b> frei – damit du endlich erfährst, warum ein Hollywood-Star der 1940er an deinem WLAN mitgetüftelt hat. 🐇🕳️</p><p>Kurze Tipps erscheinen direkt dort, wo du sie brauchst.</p>` }
+  { t: 'Willkommen bei WikiWeb', h: `<div class="ilogo">LOGO</div><p>Lies Wikipedia wie gewohnt – alles, was du liest, wächst automatisch zu deinem persönlichen <b>Wissensgraphen</b>.</p><p>Nebenbei buddelt WikiWeb die <b>Geheimgänge zwischen deinen Rabbit Holes</b> frei. 🐇🕳️</p><p><button class="btn sec" data-try type="button">Erstes Rabbit Hole: Serendipität →</button></p><p>Kurze Tipps erscheinen direkt dort, wo du sie brauchst.</p>` }
 ];
 function showIntro(i) {
   const el = $('intro'), last = i === INTRO.length - 1, c = INTRO[i];
@@ -3128,6 +3128,12 @@ function showIntro(i) {
   el.querySelector('[data-next]').onclick = () => last ? done() : showIntro(i + 1);
   const bk = el.querySelector('[data-back]'); if (bk) bk.onclick = () => showIntro(i - 1);
   const sk = el.querySelector('[data-skip]'); if (sk) sk.onclick = done;
+  const tr = el.querySelector('[data-try]');
+  if (tr) tr.onclick = () => {   // start with an article that is itself about happy accidents
+    const T = { de: 'Serendipität', en: 'Serendipity', fr: 'Sérendipité', es: 'Serendipia', it: 'Serendipità', nl: 'Serendipiteit' };
+    const lang = T[db.lang] ? db.lang : 'en';
+    el.classList.remove('on'); db.onboarded = 1; save(); openTitle(lang, T[lang]);
+  };
 }
 const BOOKMARKLET = "javascript:location.href='https://wikiweb.vercel.app/#url='+encodeURIComponent(location.href)";
 $('bmCopy').onclick = async () => { try { await navigator.clipboard.writeText(BOOKMARKLET); toast('Kopiert – als URL eines neuen Lesezeichens einfügen'); } catch (e) { toast('Kopieren nicht möglich'); } };
