@@ -180,6 +180,8 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .syncbox input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:15px;outline:none}
 .syncst{font-size:13px;color:var(--muted)}
 .syncst.err{color:#b0413e}
+.devcode{font:600 28px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-align:center;padding:14px;border:1px dashed var(--line);border-radius:12px;background:var(--card);user-select:all}
+.syncbox details summary{font-size:13px;color:var(--muted);cursor:pointer;margin-top:4px}
 .day{font-size:13px;font-weight:600;margin:16px 0 2px;color:var(--muted)}
 .hrow{display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .hrow .tm{font-size:12px;color:var(--muted);flex:none}
@@ -2933,18 +2935,66 @@ document.addEventListener('visibilitychange', () => {
   else if (syT) syncNow();      // leaving the app: push pending changes right away
 });
 window.addEventListener('online', () => syncNow());
+/* login with GitHub (device flow via a tiny Cloudflare Worker, see worker/github-auth.js) */
+const AUTH_URL = '';   // e.g. https://wikigraph-auth.<name>.workers.dev – empty = only the manual token
+let syDev = null, syDevT = null;
+async function authCall(path, body) {
+  const r = await fetch(AUTH_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok && !d.error) throw new Error('Login-Server ' + r.status);
+  return d;
+}
+async function ghLogin() {
+  try {
+    const d = await authCall('/device');
+    if (!d.device_code) throw new Error(d.error_description || d.error || 'Kein Code erhalten');
+    syDev = { code: d.device_code, user: d.user_code, uri: d.verification_uri || 'https://github.com/login/device', every: (d.interval || 5) * 1000, until: Date.now() + (d.expires_in || 900) * 1000 };
+    syErr = ''; renderSync(); pollLogin();
+  } catch (e) { syErr = e.message; renderSync(); }
+}
+function pollLogin() {
+  clearTimeout(syDevT);
+  if (!syDev) return;
+  if (Date.now() > syDev.until) { syDev = null; syErr = 'Code abgelaufen – bitte nochmal anmelden'; renderSync(); return; }
+  syDevT = setTimeout(async () => {
+    if (!syDev) return;
+    try {
+      const d = await authCall('/token', { device_code: syDev.code });
+      if (d.access_token) { syDev = null; sy = { token: d.access_token, via: 'github' }; sySave(); toast('Mit GitHub verbunden'); syncNow(); renderSync(); return; }
+      if (d.error === 'slow_down') syDev.every += 5000;
+      else if (d.error === 'access_denied') { syDev = null; syErr = 'Anmeldung abgelehnt'; renderSync(); return; }
+      else if (d.error === 'expired_token') { syDev = null; syErr = 'Code abgelaufen – bitte nochmal anmelden'; renderSync(); return; }
+      else if (d.error && d.error !== 'authorization_pending') throw new Error(d.error_description || d.error);
+    } catch (e) { /* network hiccup: keep polling until the code expires */ }
+    pollLogin();
+  }, syDev.every);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && syDev) { syDev.every = Math.max(1000, syDev.every); pollLogin(); } });
 function renderSync() {
   const box = $('syncbox'); if (!box || view !== 'more') return;
+  if (!sy.token && syDev) {
+    box.innerHTML = `<p class="note">1. Code kopieren · 2. auf GitHub einfügen und <b>Authorize</b> tippen · 3. zurück zur App – der Rest passiert automatisch.</p>
+      <div class="devcode">${esc(syDev.user)}</div>
+      <div class="btns"><button class="btn" id="devGo">Code kopieren &amp; GitHub öffnen</button><button class="btn sec" id="devX">Abbrechen</button></div>
+      <div class="syncst">Warte auf Bestätigung …</div>`;
+    $('devGo').onclick = async () => { try { await navigator.clipboard.writeText(syDev.user); toast('Code kopiert'); } catch (e) { } window.open(syDev.uri, '_blank', 'noopener'); };
+    $('devX').onclick = () => { syDev = null; clearTimeout(syDevT); renderSync(); };
+    return;
+  }
   if (!sy.token) {
-    box.innerHTML = `<p class="note">Synchronisiert deinen Graphen, Markierungen und Kommentare über ein privates GitHub Gist. Leg auf GitHub einen <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained Token</a> an, nur mit der Berechtigung <b>Gists: Read and write</b>, und trag ihn auf jedem Gerät hier ein.</p>
+    const manual = `<p class="note">Leg auf GitHub einen <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained Token</a> an, nur mit der Berechtigung <b>Gists: Read and write</b>, und trag ihn auf jedem Gerät hier ein.</p>
       <input id="syTok" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
-      <div class="btns"><button class="btn" id="syOn">Sync einschalten</button></div>`;
+      <div class="btns"><button class="btn${AUTH_URL ? ' sec' : ''}" id="syOn">Sync einschalten</button></div>`;
+    box.innerHTML = `<p class="note">Synchronisiert deinen Graphen, Markierungen und Kommentare über ein privates Gist in deinem GitHub-Account. Die Daten landen nirgendwo sonst.</p>
+      ${syErr ? `<div class="syncst err">${esc(syErr)}</div>` : ''}
+      ${AUTH_URL ? `<div class="btns"><button class="btn" id="ghIn">Mit GitHub anmelden</button></div><details><summary>Stattdessen Token eintragen</summary>${manual}</details>` : manual}`;
+    if ($('ghIn')) $('ghIn').onclick = ghLogin;
     $('syOn').onclick = () => { const t = $('syTok').value.trim(); if (!t) return; sy = { token: t }; sySave(); syncNow(); };
     return;
   }
   const st = syBusy ? 'Synchronisiere …' : syErr ? 'Fehler: ' + esc(syErr) : sy.last ? 'Zuletzt synchronisiert ' + fmtDate(sy.last) + ', ' + fmtTime(sy.last) : 'Noch nicht synchronisiert';
   box.innerHTML = `<div class="syncst${syErr && !syBusy ? ' err' : ''}">${st}</div>
-    <div class="btns"><button class="btn sec" id="syGo">Jetzt synchronisieren</button><button class="btn sec" id="syOff">Sync ausschalten</button></div>`;
+    <div class="btns"><button class="btn sec" id="syGo">Jetzt synchronisieren</button><button class="btn sec" id="syOff">${sy.via === 'github' ? 'Abmelden' : 'Sync ausschalten'}</button></div>`;
   $('syGo').onclick = () => syncNow();
   $('syOff').onclick = () => { sy = {}; sySave(); syErr = ''; renderSync(); toast('Sync aus – deine Daten bleiben auf diesem Gerät'); };
 }
