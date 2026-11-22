@@ -2935,11 +2935,11 @@ document.addEventListener('visibilitychange', () => {
   else if (syT) syncNow();      // leaving the app: push pending changes right away
 });
 window.addEventListener('online', () => syncNow());
-/* login with GitHub (device flow via a tiny Cloudflare Worker, see worker/github-auth.js) */
-const AUTH_URL = '';   // e.g. https://wikigraph-auth.<name>.workers.dev – empty = only the manual token
+/* login with GitHub (device flow via the Vercel function api/github-auth.js; not available on GitHub Pages) */
+const AUTH_URL = /github\.io$/.test(location.hostname) ? '' : '/api/github-auth';
 let syDev = null, syDevT = null;
 async function authCall(path, body) {
-  const r = await fetch(AUTH_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const r = await fetch(AUTH_URL + '?step=' + path.slice(1), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok && !d.error) throw new Error('Login-Server ' + r.status);
   return d;
