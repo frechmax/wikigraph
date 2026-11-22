@@ -2368,7 +2368,15 @@ function select(n) {
   if (n.ghost) {
     const src = n.from.map(k => db.nodes[k]).filter(Boolean);
     if (src.length) html += `<div class="nbh">Fundstellen: wo wird „${esc(n.title)}“ verlinkt?</div><div class="spots">${src.map(d => `<div class="spot"><button type="button" class="sname" data-k="${esc(K(d.lang, d.title))}">${esc(d.title)}</button><button type="button" class="btn sec sgo" data-go="${esc(K(d.lang, d.title))}">Zur Stelle ›</button></div>`).join('')}</div>`;
-  } else if (rn.length) html += `<div class="nbh">Gelesene Nachbarn</div><div class="nb">${rn.map(m => `<button class="chip" data-k="${esc(m.key)}">${esc(m.title)}</button>`).join('')}</div>`;
+  } else if (rn.length) {
+    // where do this article and each neighbour mention each other? "hier" = in this article, "dort" = in the neighbour
+    const dn = db.nodes[n.key], outN = new Set(dn ? resolvedOut(n.key, dn) : []);
+    const row = m => {
+      const dm = db.nodes[m.key], here = outN.has(m.key), there = dm && resolvedOut(m.key, dm).includes(n.key);
+      return `<div class="spot"><button type="button" class="sname" data-k="${esc(m.key)}">${esc(m.title)}</button>${here ? `<button type="button" class="btn sec sgo" data-go="${esc(n.key)}" data-tg="${esc(m.key)}">Hier ›</button>` : ''}${there ? `<button type="button" class="btn sec sgo" data-go="${esc(m.key)}" data-tg="${esc(n.key)}">Dort ›</button>` : ''}</div>`;
+    };
+    html += `<div class="nbh">Gelesene Nachbarn <span class="hint">(Fundstellen: Hier = Stelle in „${esc(n.title)}“, Dort = Stelle im Nachbarn)</span></div><div class="spots">${rn.map(row).join('')}</div>`;
+  }
   html += '<button class="shx" data-close aria-label="Schließen">✕</button>';
   const wasOpen = sh.classList.contains('on');
   sh.innerHTML = html; sh.classList.add('on'); sh.scrollTop = 0;
@@ -2392,7 +2400,7 @@ function select(n) {
   if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); (db.hts = db.hts || {})[n.key] = Date.now(); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
   sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
   sh.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => showPreview(n.lang, b.dataset.pv));
-  sh.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { const d = db.nodes[b.dataset.go]; if (d) openTitle(d.lang, d.title, null, n.key); });
+  sh.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { const d = db.nodes[b.dataset.go]; if (d) openTitle(d.lang, d.title, null, b.dataset.tg || n.key); });
 }
 function guardTap(el) { el.style.pointerEvents = 'none'; clearTimeout(el._g); el._g = setTimeout(() => { el.style.pointerEvents = ''; }, 450); }
 function closeSheet() { G.sel = null; G.pick = null; clearTemp(); $('sheet').classList.remove('on'); requestDraw(); }
