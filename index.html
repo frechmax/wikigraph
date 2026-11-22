@@ -2232,7 +2232,7 @@ $('gFilter').onclick = () => {
 };
 
 /* ---------- time window: one slider moves a window of adjustable length ---------- */
-const SPANS = [[0, 'Alles'], [1, 'Tag'], [7, 'Woche'], [30, 'Monat'], [91, '3 Monate'], [365, 'Jahr']];
+const SPANS = [[0, 'Alles'], [1, 'Tag'], [3, '3 Tage'], [7, 'Woche'], [30, 'Monat'], [91, '3 Monate'], [365, 'Jahr']];
 const TW = { span: 0, v: 1000 };
 function twBounds() {
   const ts = Object.values(db.nodes).map(n => n.first);
