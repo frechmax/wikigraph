@@ -209,6 +209,10 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .pvd{font-size:13px;color:var(--muted);margin-top:2px}
 .pvx{margin:8px 0 0;font-size:15px;line-height:1.45}
 .pvb{display:flex;gap:8px;margin-top:12px}
+#hov{position:fixed;z-index:60;width:340px;max-width:calc(100vw - 16px);background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:12px 14px;opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#hov.on{opacity:1;transform:none;pointer-events:auto}
+#hov .pvt{font-size:18px}#hov .pvx{font-size:14px;display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}
+#hov .pvimg{width:80px;height:80px}#hov .hovm{font-size:12px;color:var(--muted);margin-bottom:4px}
 .ghead{display:flex;align-items:center;gap:2px}
 .gtitle{flex:1;min-width:0}
 .gstat{font-size:13px;line-height:1.3;color:var(--muted)}
@@ -1314,6 +1318,53 @@ $('article').addEventListener('pointerdown', e => {
 $('article').addEventListener('pointermove', e => { if (lpT && lpStart && Math.hypot(e.clientX - lpStart.x, e.clientY - lpStart.y) > 10) { clearTimeout(lpT); lpT = null; } });
 ['pointerup', 'pointercancel'].forEach(t => $('article').addEventListener(t, () => { clearTimeout(lpT); lpT = null; if (lpFired) setTimeout(() => { lpFired = false; }, 700); }));
 $('article').addEventListener('contextmenu', e => { if (e.target.closest('a[data-wt]')) e.preventDefault(); });
+/* laptop: hovering a link shows the same preview as a long-press on the phone, as a small floating card */
+const sumCache = new Map();
+function fetchSummary(lang, title) {
+  const k = lang + ':' + title;
+  if (!sumCache.has(k)) sumCache.set(k, fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`).then(r => r.ok ? r.json() : null).catch(() => null).then(d => { if (!d) sumCache.delete(k); return d; }));
+  return sumCache.get(k);
+}
+if (matchMedia('(hover: hover) and (pointer: fine)').matches) (() => {
+  const card = document.createElement('div'); card.id = 'hov'; document.body.appendChild(card);
+  let showT = null, hideT = null, curEl = null, tok = 0;
+  const hide = () => { clearTimeout(showT); card.classList.remove('on'); curEl = null; };
+  const target = e => { const a = e.target.closest && e.target.closest('#article a[data-wt], #mini [data-nt]'); return a; };
+  const place = el => {
+    const r = el.getBoundingClientRect(), w = card.offsetWidth, h = card.offsetHeight, vw = innerWidth, vh = innerHeight;
+    let x = Math.min(Math.max(8, r.left), vw - w - 8), y = r.bottom + 8;
+    if (y + h > vh - 8 && r.top - h - 8 > 8) y = r.top - h - 8;
+    card.style.left = x + 'px'; card.style.top = y + 'px';
+  };
+  const show = async el => {
+    const lang = current ? current.lang : 'de', title = el.dataset.wt || el.dataset.nt, t = ++tok;
+    const n = db.nodes[resolve(K(lang, title))];
+    card.innerHTML = `<div class="pv"><div class="pvt">${esc(title)}</div><div class="hovm">Lädt …</div></div>`;
+    place(el); card.classList.add('on');
+    const d = await fetchSummary(lang, title);
+    if (t !== tok || curEl !== el) return;
+    card.innerHTML = `<div class="pv">${n ? `<div class="hovm">${n.visits.length}× gelesen</div>` : ''}${d && d.thumbnail ? `<img class="pvimg" src="${esc(d.thumbnail.source)}" alt="">` : ''}
+      <div class="pvt">${esc(d ? d.title : title)}</div>${d && d.description ? `<div class="pvd">${esc(d.description)}</div>` : ''}
+      <p class="pvx">${esc(d ? (d.extract || '') : 'Keine Vorschau verfügbar.')}</p></div>`;
+    place(el);
+  };
+  document.addEventListener('mouseover', e => {
+    if (card.contains(e.target)) { clearTimeout(hideT); return; }
+    const el = target(e);
+    if (!el) return;
+    clearTimeout(hideT);
+    if (el === curEl) return;
+    clearTimeout(showT); curEl = el;
+    showT = setTimeout(() => { if (curEl === el) show(el); }, card.classList.contains('on') ? 120 : 450);
+  });
+  document.addEventListener('mouseout', e => {
+    const to = e.relatedTarget;
+    if (to && (card.contains(to) || (curEl && curEl.contains(to)))) return;
+    if (target(e) || card.contains(e.target)) { clearTimeout(hideT); hideT = setTimeout(hide, 220); }
+  });
+  addEventListener('scroll', hide, true); addEventListener('hashchange', hide);
+  document.addEventListener('mousedown', e => { if (!card.contains(e.target)) hide(); });
+})();
 let pvTok = 0;
 async function showPreview(lang, title) {
   const tok = ++pvTok, from = view === 'read' ? current : null;
@@ -1323,7 +1374,7 @@ async function showPreview(lang, title) {
   $('pop').classList.add('on');
   guardTap($('pop'));
   let d = null;
-  try { d = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`).then(r => r.ok ? r.json() : null); } catch (e) {}
+  d = await fetchSummary(lang, title);
   if (tok !== pvTok) return;
   pb.innerHTML = `<div class="pophead">Vorschau${n ? ' · ' + n.visits.length + '× gelesen' : ''}</div>
     <div class="pv">${d && d.thumbnail ? `<img class="pvimg" src="${esc(d.thumbnail.source)}" alt="">` : ''}
