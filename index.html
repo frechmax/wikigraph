@@ -2070,7 +2070,7 @@ function draw() {
     if (n.x < vx0 || n.x > vx1 || n.y < vy0 || n.y > vy1) continue;
     let p;
     if (n === sel) p = 1e6;
-    else if (sel) { if (!sel.adj.has(n)) continue; p = 5e5 + n.w; }
+    else if (sel) { if (sel.adj.has(n)) p = 5e5 + n.w; else if (G.focusSet) p = 2e5 + n.w; else continue; }   // in focus mode keep all labels, neighbours of the selection first
     else if (hc != null) { if (n.cl !== hc) continue; p = 3e5 + n.w; }
     else p = (n.key === curKey ? 4e5 : 0) + (n.ghost ? n.c : 100 + n.w * 10);
     if (!sel && hc == null && !G.focusSet) {
@@ -2091,8 +2091,10 @@ function draw() {
     if (placed.some(q => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1])) continue;
     placed.push(r);
     ctx.lineWidth = 3; ctx.strokeStyle = TC.bg; ctx.strokeText(t, sx, y);
+    ctx.globalAlpha = sel && n !== sel && !sel.adj.has(n) ? .5 : 1;
     ctx.fillStyle = n.ghost ? TC.ghostink : TC.ink; ctx.fillText(t, sx, y);
   }
+  ctx.globalAlpha = 1;
 }
 function fitNodes(list, maxK, instant) {
   list = (list || []).filter(Boolean);
