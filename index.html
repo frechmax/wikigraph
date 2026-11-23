@@ -13,7 +13,7 @@
 <link rel="icon" type="image/svg+xml" href="icons/icon.svg?v=4">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png?v=4">
 <style>
-:root{
+:root{--later:#2f7de1;
   --bg:#f7f6f2; --card:#ffffff; --ink:#1d1d1b; --muted:#6f6c64; --line:#e3e0d8;
   --accent:#2f5d8a; --accent2:#6a4c93; --ghost:#c0873f; --sem:#b5afa2;
   --barbg:rgba(247,246,242,.94); --bg0:var(--bg0); --hover:var(--hover); --thumbbg:var(--thumbbg); --badgebg:var(--badgebg);
@@ -79,6 +79,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .rbar .ttl{flex:1;min-width:0;font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .icobtn{border:0;background:none;padding:6px;border-radius:8px;display:flex}
 .icobtn svg{width:22px;height:22px}
+#laterBtn.on{color:var(--later)}#laterBtn.on svg path{fill:currentColor}
 .icobtn.busy svg{animation:wgspin 1.6s ease-in-out infinite}
 @keyframes wgspin{50%{transform:scale(.82) rotate(60deg)}}
 .chip.act{color:var(--ink)}
@@ -412,6 +413,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
     <div class="rbar">
       <button class="icobtn" id="back" aria-label="Zurück"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <div class="ttl" id="rtitle">Lesen</div>
+      <button class="icobtn" id="laterBtn" aria-label="Zum Weiterlesen merken" title="Zum Weiterlesen merken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg></button>
       <button class="icobtn" id="tocBtn" aria-label="Inhalt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor"/></svg></button>
       <button class="icobtn" id="toGraph" aria-label="Im Graph zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.3 7l9.3.6M6.3 8.2l4.6 7.6M17.7 9.2l-4.6 6.6"/></svg></button>
     </div>
@@ -587,7 +589,7 @@ function applyTheme() {
   const dark = m === 'dark' || (m === 'auto' && mqDark.matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
-  TC = { accent: v('--accent'), accent2: v('--accent2'), ghost: v('--ghost'), sem: v('--sem'), bg: v('--bg'), ink: v('--ink'), ghostink: v('--ghostink') };
+  TC = { accent: v('--accent'), accent2: v('--accent2'), ghost: v('--ghost'), sem: v('--sem'), bg: v('--bg'), ink: v('--ink'), ghostink: v('--ghostink'), later: v('--later') };
   const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = TC.bg;
   document.querySelectorAll('#themeSel .chip').forEach(c => c.classList.toggle('on', c.dataset.th === m));
   if (typeof requestDraw === 'function' && gOn()) requestDraw();
@@ -791,6 +793,13 @@ function renderHome() {
     home.insertAdjacentHTML('beforeend', `<div class="empty"><svg class="logo-big" viewBox="78 84 362 350" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M132 380 L 214 300 L 262 336 L 330 228" stroke-width="15"/><path d="M352 196 L 384 142" stroke-width="11" stroke-dasharray="1 20"/></g><g fill="currentColor"><circle cx="132" cy="380" r="44"/><circle cx="214" cy="300" r="30"/><circle cx="262" cy="336" r="24"/><circle cx="330" cy="228" r="30"/></g><circle cx="392" cy="128" r="20" fill="none" stroke="var(--logoacc)" stroke-width="11"/></svg><br>Alles, was du hier liest, landet automatisch in deinem Graphen.<br><br>Fang einfach mit einer Suche an.</div>`);
     return;
   }
+  const later = nodes.filter(n => n.later > 0).sort((a, b) => b.later - a.later);
+  if (later.length) {
+    home.insertAdjacentHTML('beforeend', '<h2 class="sec">Weiterlesen</h2>');
+    const ul0 = document.createElement('ul'); ul0.className = 'list';
+    later.forEach(n => { const p = posStore[K(n.lang, n.title)]; ul0.appendChild(resultItem({ title: n.title, desc: (p && p.p ? `bei ${p.p} % · ` : '') + 'gemerkt ' + fmtDate(n.later) }, n.lang)); });
+    home.appendChild(ul0);
+  }
   home.insertAdjacentHTML('beforeend', '<h2 class="sec">Zuletzt gelesen</h2>');
   const ul2 = document.createElement('ul'); ul2.className = 'list';
   nodes.sort((a, b) => b.last - a.last).slice(0, 6).forEach(n => ul2.appendChild(resultItem({ title: n.title, desc: n.desc || fmtDate(n.last) }, n.lang)));
@@ -967,8 +976,9 @@ function savePos() {
   if (!current || !$('article').querySelector('.mw-parser-output')) return;
   const k = K(current.lang, current.title);
   delete posStore[k];
-  posStore[k] = { y: curY(), open: openSecs() };
-  const ks = Object.keys(posStore); if (ks.length > 80) delete posStore[ks[0]];
+  const v = $('v-read'), max = Math.max(1, v.scrollHeight - v.clientHeight);
+  posStore[k] = { y: curY(), open: openSecs(), p: Math.min(100, Math.round(curY() / max * 100)) };
+  const ks = Object.keys(posStore).filter(x => !isLater(x)); if (ks.length > 80) delete posStore[ks[0]];   // marked articles keep their position
   try { localStorage.setItem(P_KEY, JSON.stringify(posStore)); } catch (e) {}
 }
 $('v-read').addEventListener('scroll', () => { if (view === 'read') { readY = $('v-read').scrollTop; clearTimeout(posT); posT = setTimeout(savePos, 500); } }, { passive: true });
@@ -983,6 +993,15 @@ function stash() {
   pageCache.set(k, { t: current.title, lang: current.lang, art: [...$('article').childNodes], y: curY() });
   while (pageCache.size > 20) pageCache.delete(pageCache.keys().next().value);
 }
+/* ---------- "später weiterlesen": bookmark an article; later = timestamp when marked, negative when unmarked (so sync knows the newest action) ---------- */
+const isLater = k => { const n = db.nodes[k]; return !!(n && n.later > 0); };
+function setLater(k, on) {
+  const n = db.nodes[k]; if (!n) return;
+  n.later = on ? Date.now() : -Date.now(); save(); savePos(); G.dirty = true;
+  laterBtnState(); toast(on ? 'Zum Weiterlesen gemerkt' : 'Von „Weiterlesen“ entfernt');
+}
+function laterBtnState() { const b = $('laterBtn'); if (b) b.classList.toggle('on', !!(current && isLater(resolve(K(current.lang, current.title))))); }
+$('laterBtn').onclick = () => { if (!current) return; const k = resolve(K(current.lang, current.title)); setLater(k, !isLater(k)); };
 function applyPos(pos) {
   const ds = $('article').querySelectorAll('details.sec');
   (pos.open || []).forEach(i => { if (ds[i]) ds[i].open = true; });
@@ -1358,7 +1377,8 @@ async function openArticle(lang, title, from, restore) {
   setTimeout(tipRead, 900);
   if (pendingMark) { const id = pendingMark; pendingMark = null; goMark(id); }
   else if (pendingHL) { const k = pendingHL; pendingHL = null; showLinkSpots(k); }
-  else if (pos && restore) applyPos(pos); else resumePill(pos);
+  else if (pos && (restore || isLater(key))) applyPos(pos); else resumePill(pos);   // marked: continue where you stopped
+  laterBtnState();
   if (!db.tipPreview) { db.tipPreview = 1; save(); setTimeout(() => toast('Tipp: Link lang drücken = Vorschau'), 1200); }
 }
 /* wrap every h2 chapter into a collapsible <details>, like mobile Wikipedia */
@@ -2257,7 +2277,7 @@ function draw() {
   ctx.translate(W / 2 + cam.x, H / 2 + cam.y);
   ctx.scale(cam.k, cam.k);
   const sel = G.sel, k = cam.k, hc = G.hiCl;
-  const lit = n => sel ? (n === sel || sel.adj.has(n) || (G.focusSet && G.focus === sel.key && G.focusSet.has(n))) : hc != null ? n.cl === hc : true;
+  const lit = n => sel ? (n === sel || sel.adj.has(n) || (G.focusSet && G.focus === sel.key && G.focusSet.has(n))) : hc != null ? n.cl === hc : VW().laterHi ? n.later > 0 : true;
   const curKey = current ? K(current.lang, current.title) : null;
   const now = Date.now(), V = VW();
   // semantic zoom: far out, topics become bubbles
@@ -2351,6 +2371,11 @@ function draw() {
     else { ctx.fillStyle = nodeColor(n); ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
     ctx.globalAlpha = lit(n) ? 1 : .3;
     if (!n.ghost && db.hl && db.hl[n.key]) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + nr * .75, n.y - nr * .75, Math.max(isMap ? 2.2 / k : 2.6, nr * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
+    if (!n.ghost && n.later > 0) {   // "Weiterlesen": small blue bookmark at the top left
+      const s = isMap ? 1 / k : Math.max(nr * .09, 1 / k) , bx = n.x - nr * .8, by = n.y - nr * .95;
+      ctx.beginPath(); ctx.moveTo(bx - 3.2 * s, by - 4.5 * s); ctx.lineTo(bx + 3.2 * s, by - 4.5 * s); ctx.lineTo(bx + 3.2 * s, by + 4.5 * s); ctx.lineTo(bx, by + 2.2 * s); ctx.lineTo(bx - 3.2 * s, by + 4.5 * s); ctx.closePath();
+      ctx.fillStyle = TC.later; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke();
+    }
     if (n.key === curKey) { ctx.beginPath(); ctx.arc(n.x, n.y, nr + 6 / k, 0, 6.2832); ctx.strokeStyle = TC.accent; ctx.lineWidth = 2 / k; ctx.setLineDash([3 / k, 3 / k]); ctx.stroke(); ctx.setLineDash([]); }
     if (n === sel) { ctx.beginPath(); ctx.arc(n.x, n.y, nr + 3.5 / k, 0, 6.2832); ctx.strokeStyle = TC.ink; ctx.lineWidth = 2 / k; ctx.stroke(); }
   }
@@ -2479,6 +2504,8 @@ $('gFilter').onclick = () => {
     <div class="flab">Anordnung</div>
     <div class="frow">${chip('v:layout:net', VW().layout === 'net', 'Netz')}${chip('v:layout:time', VW().layout === 'time', 'Lesezeit')}${chip('v:layout:map', VW().layout === 'map', 'Karte')}${chip('v:layout:hist', VW().layout === 'hist', 'Geschichte')}</div>
     <div class="frow" style="margin-top:8px"><button class="chip act" id="relayout" type="button">↻ Neu anordnen</button></div>
+    <div class="flab">Hervorheben</div>
+    <div class="frow">${chip('v:laterHi', VW().laterHi, '<span style="color:var(--later)">▮</span> Nur „Weiterlesen“')}</div>
     <div class="flab">Linien &amp; Gruppen</div>
     <div class="frow">${chip('v:islands', VW().islands, 'Themen als Inseln')}${chip('v:ghostLines', VW().ghostLines, 'Vorschlags-Linien immer')}</div>
     <div class="flab">Beim Öffnen zeigen</div>
@@ -3168,6 +3195,7 @@ function mergeData(d, imp) {
       m.first = Math.min(m.first, n.first); m.last = Math.max(m.last || 0, n.last || 0);
       for (const f in n) {     // other fields: deterministic winner so both devices converge on the same value
         if (f === 'visits' || f === 'first' || f === 'last' || f === 'cs' || n[f] === undefined) continue;
+        if (f === 'later') { if (Math.abs(n.later) > Math.abs(m.later || 0)) m.later = n.later; continue; }   // newest mark/unmark wins
         const a = m[f], b = n[f];
         if (a === undefined || (Array.isArray(a) && !a.length)) { m[f] = b; continue; }
         if (Array.isArray(a) && Array.isArray(b) && a.length !== b.length) { if (b.length > a.length) m[f] = b; continue; }
