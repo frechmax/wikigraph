@@ -66,6 +66,7 @@ nav.tabs button.on{color:var(--accent)}
 .nearerr{font-size:13px;color:var(--muted);margin:8px 2px}
 .nearrow{margin:0 0 6px;align-items:center}.nearrow .nsep{flex:0 0 6px}
 .nearsrcbtn{max-width:calc(100% - 50px);overflow:hidden;text-overflow:ellipsis}
+.nearmore{display:block;margin:10px auto 0}
 .nearoff{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted);margin:18px 2px 4px}
 .nearform{display:flex;gap:6px;margin-top:8px}.nearform input{flex:1;min-width:0;font:inherit;font-size:15px;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
 .nearhit{display:block;width:100%;text-align:left;font:inherit;font-size:13px;padding:8px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);cursor:pointer}
@@ -806,7 +807,7 @@ function renderHome() {
 
 /* ---------- nearby: Wikipedia articles around you, with the ones that fit your graph first ----------
    location source (db.near): GPS, a place you chose (address search or tap on the map), or off */
-const NEAR = { r: 2000, sort: 'fit', pos: null, at: 0, list: null, lang: null, busy: false, err: '', edit: false, hits: null };
+const NEAR = { show: 15, limit: 100, r: 2000, sort: 'fit', pos: null, at: 0, list: null, lang: null, busy: false, err: '', edit: false, hits: null };
 const NS = () => db.near || (db.near = {});
 function nearBox() {
   const box = document.createElement('div'); box.id = 'nearbox';
@@ -845,10 +846,13 @@ function renderNear(box) {
     box.innerHTML = h;
     if (NEAR.list && S.mode && !NEAR.edit) {
       const ul = document.createElement('ul'); ul.className = 'list';
-      const L = NEAR.list.filter(x => x.dist <= NEAR.r).sort((a, b) => NEAR.sort === 'dist' ? a.dist - b.dist : b.fit - a.fit || a.dist - b.dist).slice(0, 15);
+      const L = NEAR.list.filter(x => x.dist <= NEAR.r).sort((a, b) => NEAR.sort === 'dist' ? a.dist - b.dist : b.fit - a.fit || a.dist - b.dist)    .slice(0, NEAR.show);
       if (!L.length) ul.innerHTML = `<div class="empty">Im Umkreis von ${fmtDist(NEAR.r)} gibt es keine Artikel mit Koordinaten.</div>`;
       L.forEach(x => ul.appendChild(resultItem({ title: x.title, desc: `${x.arrow} ${fmtDist(x.dist)}${x.desc ? ' · ' + x.desc : ''}`, thumb: x.thumb, badge: x.links ? (x.links > 1 ? x.links + '× verlinkt' : 'verbunden') : '' }, NEAR.lang)));
       box.appendChild(ul);
+      const inR = NEAR.list.filter(x => x.dist <= NEAR.r).length, more = inR > NEAR.show || (NEAR.list.length >= NEAR.limit && NEAR.limit < 500);
+      if (more) box.insertAdjacentHTML('beforeend', `<button type="button" class="chip act nearmore" data-n="more">${NEAR.busy ? 'Lade …' : 'Mehr anzeigen'}</button>`);
+      else if (L.length) box.insertAdjacentHTML('beforeend', `<div class="nearerr">${inR} Artikel im Umkreis von ${fmtDist(NEAR.r)}</div>`);
     }
   }
   const f = box.querySelector('.nearform');
@@ -856,14 +860,20 @@ function renderNear(box) {
   box.querySelectorAll('[data-n]').forEach(b => b.onclick = () => {
     const t = b.dataset.n, S2 = NS();
     if (t === 'go') return nearLoad(true);
+    if (t === 'more') {   // show 15 more; when everything loaded is shown, load a bigger batch (max 500)
+      const inR = NEAR.list.filter(x => x.dist <= NEAR.r).length;
+      NEAR.show += 15;
+      if (NEAR.show > inR && NEAR.list.length >= NEAR.limit && NEAR.limit < 500) { NEAR.limit = Math.min(500, NEAR.limit * 2 + 100); NEAR.keepShow = true; return nearLoad(); }
+      return renderNear();
+    }
     if (t === 'src') { if (S2.mode === 'off') S2.mode = null; NEAR.edit = true; NEAR.addr = false; NEAR.hits = null; save(); return renderNear(); }
     if (t === 'm:gps') { S2.mode = 'gps'; NEAR.edit = false; NEAR.list = null; save(); return nearLoad(true); }
     if (t === 'm:off') { S2.mode = 'off'; NEAR.edit = false; NEAR.list = null; save(); return renderNear(); }
     if (t === 'm:addr') { NEAR.addr = !NEAR.addr; NEAR.hits = null; return renderNear(); }
     if (t === 'm:map') return nearPickOnMap();
     if (t.startsWith('h:')) { const x = NEAR.hits[+t.slice(2)]; return nearSetPlace(+x.lat, +x.lon, x.display_name.split(',').slice(0, 2).join(',').trim()); }
-    if (t.startsWith('r:')) { NEAR.r = +t.slice(2); if (NEAR.r > (NEAR.loadedR || 0)) nearLoad(); else renderNear(); }
-    if (t.startsWith('s:')) { NEAR.sort = t.slice(2); renderNear(); }
+    if (t.startsWith('r:')) { NEAR.r = +t.slice(2); NEAR.show = 15; if (NEAR.r > (NEAR.loadedR || 0)) nearLoad(); else renderNear(); }
+    if (t.startsWith('s:')) { NEAR.sort = t.slice(2); NEAR.show = 15; renderNear(); }
   });
 }
 async function nearGeocode(q) {
@@ -895,6 +905,7 @@ function nearPickAt(sx, sy) {
 }
 function nearLoad(asked) {
   const S = NS();
+  if (!NEAR.keepShow) { NEAR.show = 15; NEAR.limit = 100; } NEAR.keepShow = false;
   NEAR.busy = true; NEAR.err = ''; renderNear();
   const go = async (lat, lon) => {
     NEAR.pos = [lat, lon];
@@ -912,7 +923,7 @@ function nearLoad(asked) {
 }
 async function nearFetch() {
   const lang = $('lang').value || 'de', [lat, lon] = NEAR.pos, R = Math.max(NEAR.r, 2000);
-  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=${Math.min(10000, R)}&ggslimit=100&prop=coordinates|pageimages|description&piprop=thumbnail&pithumbsize=96&pilimit=100&colimit=100&codistancefrompoint=${lat}|${lon}`;
+  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=${Math.min(10000, R)}&ggslimit=${NEAR.limit}&prop=coordinates|pageimages|description&piprop=thumbnail&pithumbsize=96&pilimit=50&colimit=max&codistancefrompoint=${lat}|${lon}`;
   const d = await fetch(u).then(r => r.json());
   let gc = null; try { gc = analyze(Infinity).gc; } catch (e) { }
   NEAR.list = ((d.query && d.query.pages) || []).filter(p => p.coordinates && p.coordinates[0]).map(p => {
@@ -2331,11 +2342,11 @@ function draw() {
     ctx.beginPath(); ctx.arc(n.x, n.y, nr, 0, 6.2832);
     if (n.ghost) {
       ctx.fillStyle = TC.bg; ctx.fill(); ctx.strokeStyle = n.path ? TC.ink : n.cl >= 0 && G.color === 'topic' ? pal(n.cl) : TC.ghost; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]);
-      if (n.hl) { ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(1.6, nr * .35), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); }
+      if (n.hl) { ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(isMap ? 1.4 / k : 1.6, nr * .35), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); }
     }
     else { ctx.fillStyle = nodeColor(n); ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
     ctx.globalAlpha = lit(n) ? 1 : .3;
-    if (!n.ghost && db.hl && db.hl[n.key]) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + nr * .75, n.y - nr * .75, Math.max(2.6, nr * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
+    if (!n.ghost && db.hl && db.hl[n.key]) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + nr * .75, n.y - nr * .75, Math.max(isMap ? 2.2 / k : 2.6, nr * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
     if (n.key === curKey) { ctx.beginPath(); ctx.arc(n.x, n.y, nr + 6 / k, 0, 6.2832); ctx.strokeStyle = TC.accent; ctx.lineWidth = 2 / k; ctx.setLineDash([3 / k, 3 / k]); ctx.stroke(); ctx.setLineDash([]); }
     if (n === sel) { ctx.beginPath(); ctx.arc(n.x, n.y, nr + 3.5 / k, 0, 6.2832); ctx.strokeStyle = TC.ink; ctx.lineWidth = 2 / k; ctx.stroke(); }
   }
