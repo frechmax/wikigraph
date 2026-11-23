@@ -619,7 +619,8 @@ function sameMap() {
   return SAME;
 }
 const grp = k => (sameMap(), GRP.get(k) || [k]);
-const resolve = k => { const a = db.alias[k], r = a ? k.slice(0, k.indexOf(':')) + ':' + a : k; return sameMap().get(r) || r; };
+const resolveA = k => { const a = db.alias[k]; return a ? k.slice(0, k.indexOf(':')) + ':' + a : k; };   // redirects only, same language
+const resolve = k => { const r = resolveA(k); return sameMap().get(r) || r; };
 const C = k => sameMap().get(k) || k;      // same topic in another language -> main key
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const $ = id => document.getElementById(id);
@@ -1021,7 +1022,7 @@ function langBtnState() { const b = $('langBtn'); if (!b) return; b.textContent 
 $('langBtn').onclick = () => {
   if (!current) return;
   const main = resolve(K(current.lang, current.title)), read = new Map(grp(main).map(k => [db.nodes[k].lang, db.nodes[k]]));
-  const mine = myLangs(), all = [{ lang: current.lang, title: current.title, autonym: '' }, ...(current.ll || [])];
+  const mine = myLangs(), all = [{ lang: current.lang, title: current.title, autonym: '' }, ...(current.ll || []).filter(x => x.lang !== current.lang)];
   all.sort((a, b) => (b.lang === current.lang) - (a.lang === current.lang) || read.has(b.lang) - read.has(a.lang) || mine.has(b.lang) - mine.has(a.lang) || a.lang.localeCompare(b.lang));
   const dn = l => { try { return new Intl.DisplayNames([l], { type: 'language' }).of(l); } catch (e) { return l; } };
   const row = x => `<button type="button" class="${x.lang === current.lang ? 'cur' : ''}" data-l="${esc(x.lang)}" data-t="${esc(x.title)}"><span>${read.has(x.lang) ? '<span class="rd">●</span>' : ''}${esc(x.autonym || dn(x.lang))} <span style="color:var(--muted);font-size:12px">${esc(x.lang)}</span></span><small>${esc(x.title)}</small></button>`;
@@ -1356,7 +1357,7 @@ async function openArticle(lang, title, from, restore) {
   const art = $('article');
   document.querySelectorAll('#v-read .resume').forEach(b => b.remove());
   $('v-read').querySelector('.bar').classList.remove('hide');
-  const ck = resolve(K(lang, title)), cached = pageCache.get(ck);
+  const ck = resolveA(K(lang, title)), cached = pageCache.get(ck);   // rendered page of exactly this language version
   if (cached) {                       // instant: reuse the rendered page
     pageCache.delete(ck);
     current = { lang, title: cached.t, ll: cached.ll };
