@@ -79,6 +79,11 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .rbar .ttl{flex:1;min-width:0;font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .icobtn{border:0;background:none;padding:6px;border-radius:8px;display:flex}
 .icobtn svg{width:22px;height:22px}
+.icobtn.langbtn{font:700 12px/1 -apple-system,Segoe UI,Roboto,sans-serif;letter-spacing:.04em;text-transform:uppercase}
+.langlist button{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;font:inherit;padding:10px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);cursor:pointer}
+.langlist button small{color:var(--muted);margin-left:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.langlist button.cur{font-weight:700}.langlist .rd{color:var(--accent);font-size:12px;margin-right:6px}
+.langs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.langs .chip{text-transform:uppercase;font-size:12px}
 #laterBtn.on{color:var(--later)}#laterBtn.on svg path{fill:currentColor}
 .icobtn.busy svg{animation:wgspin 1.6s ease-in-out infinite}
 @keyframes wgspin{50%{transform:scale(.82) rotate(60deg)}}
@@ -413,6 +418,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
     <div class="rbar">
       <button class="icobtn" id="back" aria-label="Zurück"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <div class="ttl" id="rtitle">Lesen</div>
+      <button class="icobtn langbtn" id="langBtn" aria-label="Sprache wechseln" title="Andere Sprache">DE</button>
       <button class="icobtn" id="laterBtn" aria-label="Zum Weiterlesen merken" title="Zum Weiterlesen merken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg></button>
       <button class="icobtn" id="tocBtn" aria-label="Inhalt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor"/></svg></button>
       <button class="icobtn" id="toGraph" aria-label="Im Graph zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.3 7l9.3.6M6.3 8.2l4.6 7.6M17.7 9.2l-4.6 6.6"/></svg></button>
@@ -597,7 +603,24 @@ function applyTheme() {
 function setTheme(m) { db.theme = m; save(); applyTheme(); }
 try { mqDark.addEventListener('change', applyTheme); } catch (e) {}
 const K = (lang, title) => lang + ':' + title;
-const resolve = k => { const a = db.alias[k]; return a ? k.slice(0, k.indexOf(':')) + ':' + a : k; };
+/* one topic, several languages: articles with the same Wikidata item (or known language links of a read article)
+   all count as one node – the one you read first. SAME: key -> that main key; GRP: main key -> all read keys */
+let sameRev = -1, SAME = new Map(), GRP = new Map();
+function sameMap() {
+  if (sameRev === dbRev) return SAME;
+  sameRev = dbRev; SAME = new Map(); GRP = new Map();
+  const byQ = new Map();
+  for (const [k, n] of Object.entries(db.nodes)) if (n.qid) { const m = byQ.get(n.qid); if (!m || n.first < db.nodes[m].first) byQ.set(n.qid, k); }
+  for (const [k, n] of Object.entries(db.nodes)) {
+    const main = n.qid ? byQ.get(n.qid) : k;
+    if (main !== k) { SAME.set(k, main); GRP.get(main) ? GRP.get(main).push(k) : GRP.set(main, [main, k]); }
+    for (const l in n.ll || {}) { const lk = l + ':' + n.ll[l]; if (lk !== main && !(db.nodes[lk] && db.nodes[lk].qid && db.nodes[lk].qid !== n.qid)) SAME.set(lk, main); }
+  }
+  return SAME;
+}
+const grp = k => (sameMap(), GRP.get(k) || [k]);
+const resolve = k => { const a = db.alias[k], r = a ? k.slice(0, k.indexOf(':')) + ':' + a : k; return sameMap().get(r) || r; };
+const C = k => sameMap().get(k) || k;      // same topic in another language -> main key
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const $ = id => document.getElementById(id);
 function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2200); }
@@ -605,7 +628,7 @@ const fmtDate = ts => new Date(ts).toLocaleDateString('de-DE', { day: '2-digit',
 const fmtTime = ts => new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
 /* ---------- api ---------- */
-const parseParams = title => ({ action: 'parse', page: title, prop: 'text|links|properties|displaytitle', redirects: 1, disableeditsection: 1, disabletoc: 1 });
+const parseParams = title => ({ action: 'parse', page: title, prop: 'text|links|properties|displaytitle|langlinks', redirects: 1, disableeditsection: 1, disabletoc: 1 });
 function api(lang, params) {
   const u = new URL(`https://${lang}.wikipedia.org/w/api.php`);
   const p = Object.assign({ format: 'json', formatversion: 2, origin: '*' }, params);
@@ -990,11 +1013,53 @@ function stash() {
   savePos();
   const k = K(current.lang, current.title);
   pageCache.delete(k);
-  pageCache.set(k, { t: current.title, lang: current.lang, art: [...$('article').childNodes], y: curY() });
+  pageCache.set(k, { t: current.title, lang: current.lang, ll: current.ll, art: [...$('article').childNodes], y: curY() });
   while (pageCache.size > 20) pageCache.delete(pageCache.keys().next().value);
 }
+/* ---------- language versions of the article you're reading ---------- */
+function langBtnState() { const b = $('langBtn'); if (!b) return; b.textContent = current ? current.lang : ''; b.style.visibility = current && current.ll && current.ll.length ? '' : 'hidden'; }
+$('langBtn').onclick = () => {
+  if (!current) return;
+  const main = resolve(K(current.lang, current.title)), read = new Map(grp(main).map(k => [db.nodes[k].lang, db.nodes[k]]));
+  const mine = myLangs(), all = [{ lang: current.lang, title: current.title, autonym: '' }, ...(current.ll || [])];
+  all.sort((a, b) => (b.lang === current.lang) - (a.lang === current.lang) || read.has(b.lang) - read.has(a.lang) || mine.has(b.lang) - mine.has(a.lang) || a.lang.localeCompare(b.lang));
+  const dn = l => { try { return new Intl.DisplayNames([l], { type: 'language' }).of(l); } catch (e) { return l; } };
+  const row = x => `<button type="button" class="${x.lang === current.lang ? 'cur' : ''}" data-l="${esc(x.lang)}" data-t="${esc(x.title)}"><span>${read.has(x.lang) ? '<span class="rd">●</span>' : ''}${esc(x.autonym || dn(x.lang))} <span style="color:var(--muted);font-size:12px">${esc(x.lang)}</span></span><small>${esc(x.title)}</small></button>`;
+  const top = all.filter(x => x.lang === current.lang || read.has(x.lang) || mine.has(x.lang)), rest = all.filter(x => !top.includes(x));
+  const pb = $('popbody');
+  pb.innerHTML = `<div class="pophead">Dieser Artikel in anderen Sprachen</div><div class="langlist">${top.map(row).join('')}</div>
+    ${rest.length ? `<details><summary style="margin:10px 0;color:var(--muted)">${rest.length} weitere Sprachen</summary><div class="langlist">${rest.map(row).join('')}</div></details>` : ''}
+    <p class="note" style="margin-top:10px">● schon gelesen. Alle Sprachversionen sind im Graph ein Knoten.</p>`;
+  $('pop').classList.add('on');
+  pb.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { $('pop').classList.remove('on'); if (b.dataset.l !== current.lang) { stash(); openTitle(b.dataset.l, b.dataset.t, null); } });
+};
+/* articles read before language links were stored: fetch Wikidata ID + titles in your other languages once */
+async function fillLangs() {
+  const L = [...myLangs()], todo = Object.values(db.nodes).filter(n => !n.ll && !n.llTry);
+  if (!todo.length || !navigator.onLine) return;
+  const by = {}; todo.forEach(n => (by[n.lang] = by[n.lang] || []).push(n));
+  for (const [lang, list] of Object.entries(by)) for (let i = 0; i < list.length; i += 50) {
+    const part = list.slice(i, i + 50), ll = new Map(part.map(n => [n.title, {}])), qs = new Map();
+    for (const tl of L.filter(x => x !== lang)) {
+      try {
+        const r = await api(lang, { action: 'query', prop: 'pageprops|langlinks', ppprop: 'wikibase_item', lllang: tl, lllimit: 'max', redirects: 1, titles: part.map(n => n.title).join('|') });
+        const back = new Map(); (r.query.normalized || []).concat(r.query.redirects || []).forEach(x => back.set(x.to, x.from));
+        for (const pg of r.query.pages || []) {
+          let t = pg.title; while (back.has(t) && !ll.has(t)) t = back.get(t);
+          if (!ll.has(t)) continue;
+          if (pg.pageprops && pg.pageprops.wikibase_item) qs.set(t, pg.pageprops.wikibase_item);
+          (pg.langlinks || []).forEach(x => { ll.get(t)[x.lang] = x.title; });
+        }
+      } catch (e) { return; }
+    }
+    part.forEach(n => { n.ll = ll.get(n.title); if (!n.qid && qs.get(n.title)) n.qid = qs.get(n.title); });
+  }
+  save(); G.dirty = true; if (gOn()) { rebuild(); requestDraw(); }
+}
+setTimeout(fillLangs, 6000);
 /* ---------- "später weiterlesen": bookmark an article; later = timestamp when marked, negative when unmarked (so sync knows the newest action) ---------- */
-const isLater = k => { const n = db.nodes[k]; return !!(n && n.later > 0); };
+const isLater = k => { const n = db.nodes[resolve(k)]; return !!(n && n.later > 0); };
+const hlCount = k => grp(k).reduce((s, m) => s + ((db.hl || {})[m] || []).length, 0);
 function setLater(k, on) {
   const n = db.nodes[k]; if (!n) return;
   n.later = on ? Date.now() : -Date.now(); save(); savePos(); G.dirty = true;
@@ -1247,7 +1312,8 @@ function csP(n, key) { // share of readers of article n who click on to key
   for (const [tg, c] of n.cs.l) if (resolve(K(n.lang, tg)) === key) return c / n.cs.t;
   return 0;
 }
-function recordVisit(lang, t, from, out, props) {
+const myLangs = () => new Set(['de', 'en', ...Object.values(db.nodes).map(n => n.lang)]);
+function recordVisit(lang, t, from, out, props, ll) {
   const key = K(lang, t), now = Date.now();
   let n = db.nodes[key];
   if (!n) n = db.nodes[key] = { title: t, lang, visits: [], first: now };
@@ -1256,6 +1322,7 @@ function recordVisit(lang, t, from, out, props) {
   n.last = now;
   if (out) { n.out = out.slice(0, 1200); learnRedirects(lang, t); attachCS(K(lang, t)); }
   if (props && props.wikibase_item) n.qid = props.wikibase_item;
+  if (ll) { const L = myLangs(); n.ll = {}; for (const x of ll) if (L.has(x.lang) && x.lang !== lang) n.ll[x.lang] = x.title; }
   if (props && props['wikibase-shortdesc']) n.desc = props['wikibase-shortdesc'];
   if (from) {
     const fk = K(from.lang, from.title);
@@ -1270,7 +1337,7 @@ function recordVisit(lang, t, from, out, props) {
 $('back').onclick = () => history.back();
 $('toGraph').onclick = () => {
   if (isWide()) { splitPref = !splitPref; try { localStorage.setItem('wikigraph.split', splitPref ? '1' : '0'); } catch (e) { } applyLayout(); toast(splitPref ? 'Graph daneben' : 'Graph ausgeblendet'); return; }
-  if (current) { G.focusKey = K(current.lang, current.title); } go('#graph');
+  if (current) { G.focusKey = resolve(K(current.lang, current.title)); } go('#graph');
 };
 /* draggable divider between article and graph */
 (() => {
@@ -1292,11 +1359,11 @@ async function openArticle(lang, title, from, restore) {
   const ck = resolve(K(lang, title)), cached = pageCache.get(ck);
   if (cached) {                       // instant: reuse the rendered page
     pageCache.delete(ck);
-    current = { lang, title: cached.t };
+    current = { lang, title: cached.t, ll: cached.ll };
     if (cached.t !== title) history.replaceState(null, '', artHash(lang, cached.t));
     $('rtitle').textContent = cached.t;
     art.replaceChildren(...cached.art);
-    recordVisit(lang, cached.t, from);
+    recordVisit(lang, cached.t, from); langBtnState(); laterBtnState();
     updateTrail(lang, cached.t, from, restore); renderMini(); paintHighlights();
     if (pendingMark) { const id = pendingMark; pendingMark = null; goMark(id); return; }
     if (restore) { $('v-read').scrollTop = cached.y; readY = cached.y; }
@@ -1355,7 +1422,9 @@ async function openArticle(lang, title, from, restore) {
   });
   // record visit
   const key = K(lang, t);
-  const n = recordVisit(lang, t, from, out, props);
+  const n = recordVisit(lang, t, from, out, props, p.langlinks);
+  current.ll = p.langlinks || [];
+  langBtnState();
 
   // render
   $('rtitle').textContent = t;
@@ -1603,17 +1672,19 @@ function analyze(tMax, tMin = -Infinity) {
 }
 function analyzeRaw(tMax, tMin = -Infinity) {
   const inT = t => t >= tMin && t <= tMax;   // an article is in the time window if you read it at least once inside it
-  const vis = Object.keys(db.nodes).filter(k => { const n = db.nodes[k]; return n.first <= tMax && (tMin === -Infinity || n.visits.some(inT)); });
+  sameMap();
+  const inW = k => { const n = db.nodes[k]; return n.first <= tMax && (tMin === -Infinity || n.visits.some(inT)); };
+  const vis = Object.keys(db.nodes).filter(k => !SAME.has(k) && grp(k).some(inW));
   const N = vis.length, idx = new Map(vis.map((k, i) => [k, i]));
   const hidden = new Set(db.hidden || []);
   const pairs = new Map(), links = [];
   for (const e of db.edges) {
     if (e.ts > tMax || e.ts < tMin) continue;
-    const i = idx.get(e.f), j = idx.get(e.t);
+    const ef = C(e.f), et = C(e.t), i = idx.get(ef), j = idx.get(et);
     if (i === undefined || j === undefined || i === j) continue;
     const id = i < j ? i * N + j : j * N + i, l = pairs.get(id);
     if (l) l.c++;
-    else { const nl = { s: e.f, t: e.t, type: 'nav', c: 1 }; pairs.set(id, nl); links.push(nl); }
+    else { const nl = { s: ef, t: et, type: 'nav', c: 1 }; pairs.set(id, nl); links.push(nl); }
   }
   const gc = new Map();
   // links inside your highlights count 3x
@@ -1621,11 +1692,12 @@ function analyzeRaw(tMax, tMin = -Infinity) {
   for (const a in db.hl || {}) { const n = db.nodes[a]; if (!n) continue; const set = new Set(); db.hl[a].forEach(h => (h.links || []).forEach(t => set.add(resolve(K(n.lang, t))))); hlk.set(a, set); }
   // Wikidata relations among read articles
   const wdl = new Map();
-  if (db.showWd && db.wd) for (const e of db.wd.edges) { const i = idx.get(e.a), j = idx.get(e.b); if (i === undefined || j === undefined) continue; const id = i < j ? i * N + j : j * N + i; if (!wdl.has(id)) wdl.set(id, { s: e.a, t: e.b, ls: [] }); wdl.get(id).ls.push(e.l); }
-  for (let ai = 0; ai < N; ai++) {
-    const a = vis[ai], n = db.nodes[a], pre = n.lang + ':', hs = hlk.get(a);
+  if (db.showWd && db.wd) for (const e of db.wd.edges) { const ea = C(e.a), eb = C(e.b), i = idx.get(ea), j = idx.get(eb); if (i === undefined || j === undefined || i === j) continue; const id = i < j ? i * N + j : j * N + i; if (!wdl.has(id)) wdl.set(id, { s: ea, t: eb, ls: [] }); wdl.get(id).ls.push(e.l); }
+  for (let ai = 0; ai < N; ai++) for (const mk of grp(vis[ai])) {     // the main article and its other language versions
+    const a = vis[ai], n = db.nodes[mk], pre = n.lang + ':', hs = hlk.get(mk);
     const wt = 1 / Math.log2((n.out || []).length + 2);   // Adamic-Adar: a link from a long article counts less
-    for (const k of resolvedOut(a, n)) {
+    for (const k0 of resolvedOut(mk, n)) {
+      const k = C(k0);
       if (k === a || hidden.has(k)) continue;
       const j = idx.get(k);
       if (j !== undefined) {
@@ -1641,8 +1713,8 @@ function analyzeRaw(tMax, tMin = -Infinity) {
     }
   }
   // clickstream: probability that readers of your articles click on to an unread article
-  for (let ai = 0; ai < N; ai++) {
-    const a = vis[ai], n = db.nodes[a];
+  for (let ai = 0; ai < N; ai++) for (const mk of grp(vis[ai])) {
+    const a = vis[ai], n = db.nodes[mk];
     if (!n.cs || !n.cs.t) continue;
     const pre = n.lang + ':';
     for (const [tg, c] of n.cs.l) {
@@ -1760,17 +1832,17 @@ function rebuild() {
   };
   const nbr = new Map();
   for (const l of an.links) { if (!nbr.has(l.s)) nbr.set(l.s, l.t); if (!nbr.has(l.t)) nbr.set(l.t, l.s); }
-  const V = VW(), curK = current ? K(current.lang, current.title) : null;
+  const V = VW(), curK = current ? resolve(K(current.lang, current.title)) : null;
   // importance: hide "fleeting" articles (opened once, nothing marked, never read on from)
   const outNav = new Map(); for (const e of db.edges) if (e.ts <= G.tMax && e.ts >= G.tMin) outNav.set(e.f, (outNav.get(e.f) || 0) + 1);
-  const keep = k => { if (!V.imp || k === curK) return true; const n = db.nodes[k], hl = ((db.hl || {})[k] || []).length, on = outNav.get(k) || 0;
+  const keep = k => { if (!V.imp || k === curK) return true; const n = db.nodes[k], hl = hlCount(k), on = outNav.get(k) || 0;
     return V.imp === 1 ? (n.visits.length > 1 || hl > 0 || on > 0) : (n.visits.length > 1 || hl > 0 || on > 1); };
   const visSorted = an.vis.filter(keep).sort((a, b) => db.nodes[a].first - db.nodes[b].first);
   G.hiddenCount = an.vis.length - visSorted.length;
   for (const k of visSorted) {
     const n = db.nodes[k];
     const p = place(k, nbr.get(k));
-    const o = { key: k, title: n.title, lang: n.lang, ghost: false, w: n.visits.filter(t => t <= G.tMax && t >= G.tMin).length || 1, last: n.last || n.first, x: p.x, y: p.y, vx: 0, vy: 0 };
+    const o = { key: k, title: n.title, lang: n.lang, ghost: false, w: grp(k).reduce((s, m) => s + db.nodes[m].visits.filter(t => t <= G.tMax && t >= G.tMin).length, 0) || 1, last: n.last || n.first, x: p.x, y: p.y, vx: 0, vy: 0 };
     o.r = 6 + Math.sqrt(o.w) * 3.2;
     nodes.push(o); by.set(k, o);
   }
@@ -2278,7 +2350,7 @@ function draw() {
   ctx.scale(cam.k, cam.k);
   const sel = G.sel, k = cam.k, hc = G.hiCl;
   const lit = n => sel ? (n === sel || sel.adj.has(n) || (G.focusSet && G.focus === sel.key && G.focusSet.has(n))) : hc != null ? n.cl === hc : VW().laterHi ? n.later > 0 : true;
-  const curKey = current ? K(current.lang, current.title) : null;
+  const curKey = current ? resolve(K(current.lang, current.title)) : null;
   const now = Date.now(), V = VW();
   // semantic zoom: far out, topics become bubbles
   const bt = bubbleT();
@@ -2370,7 +2442,7 @@ function draw() {
     }
     else { ctx.fillStyle = nodeColor(n); ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
     ctx.globalAlpha = lit(n) ? 1 : .3;
-    if (!n.ghost && db.hl && db.hl[n.key]) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + nr * .75, n.y - nr * .75, Math.max(isMap ? 2.2 / k : 2.6, nr * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
+    if (!n.ghost && hlCount(n.key)) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + nr * .75, n.y - nr * .75, Math.max(isMap ? 2.2 / k : 2.6, nr * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
     if (!n.ghost && n.later > 0) {   // "Weiterlesen": small blue bookmark at the top left
       const s = isMap ? 1 / k : Math.max(nr * .09, 1 / k) , bx = n.x - nr * .8, by = n.y - nr * .95;
       ctx.beginPath(); ctx.moveTo(bx - 3.2 * s, by - 4.5 * s); ctx.lineTo(bx + 3.2 * s, by - 4.5 * s); ctx.lineTo(bx + 3.2 * s, by + 4.5 * s); ctx.lineTo(bx, by + 2.2 * s); ctx.lineTo(bx - 3.2 * s, by + 4.5 * s); ctx.closePath();
@@ -2458,7 +2530,7 @@ function graphEnter() {
   if (G.focusKey && G.by.has(G.focusKey)) { const n = G.by.get(G.focusKey); select(n); centerOn(n); }
   else if (VW().start === 'local' && current && !G.geo) {
     // open as local graph around the article you're reading (only once per article, so "✕" sticks)
-    const ck = K(current.lang, current.title);
+    const ck = resolve(K(current.lang, current.title));
     if (G.localFor !== ck && G.by.has(ck)) { G.localFor = ck; G.hiCl = null; setFocus(ck, 2); fitNodes([...G.focusSet], 1.6, true); }
   }
   G.focusKey = null;
@@ -2472,7 +2544,7 @@ if (window.ResizeObserver) new ResizeObserver(() => { if (gOn() && (cv.parentEle
 /* header buttons */
 $('gFit').onclick = () => { G.hiCl = null; setFocus(null); closeSheet(); renderGraphHeader(analyze(G.tMax, G.tMin)); fit(); };
 $('gHere').onclick = () => {
-  const n = current && G.by.get(K(current.lang, current.title));
+  const n = current && G.by.get(resolve(K(current.lang, current.title)));
   if (!n) { toast(current ? 'Aktueller Artikel ist gerade nicht im Graph sichtbar' : 'Noch kein Artikel geöffnet'); return; }
   select(n); centerOn(n, 1.4);
 };
@@ -2731,6 +2803,7 @@ function select(n) {
   } else {
     const d = db.nodes[n.key];
     html = `<div class="st">${esc(n.title)}</div>
+      ${grp(n.key).length > 1 ? `<div class="langs">${grp(n.key).map(m => `<button type="button" class="chip" data-lv="${esc(m)}">${esc(db.nodes[m].lang)} · ${db.nodes[m].visits.length}×</button>`).join('')}</div>` : ''}
       <div class="sm">${d.desc ? esc(d.desc) + '<br>' : ''}${d.qid && db.facts && factText(db.facts[d.qid]) ? esc(factText(db.facts[d.qid])) + '<br>' : ''}${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)} ${clTag}</div>
       <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button><button class="btn sec" data-path>⇄ Verbindung</button>${db.hl && db.hl[n.key] ? `<button class="btn sec" data-notes>✎ ${db.hl[n.key].length} Markierung${db.hl[n.key].length > 1 ? 'en' : ''}</button>` : ''}<button class="btn sec rmbtn" data-rm>Entfernen</button></div>`;
     const wds = wdOf(n.key);
@@ -2770,8 +2843,9 @@ function select(n) {
   const rb = sh.querySelector('[data-rm]');
   if (rb) rb.onclick = () => {
     if (!rb.dataset.armed) { rb.dataset.armed = 1; rb.className = 'btn sec rmbtn armed'; const nh = (db.hl && db.hl[n.key] || []).length; rb.textContent = nh ? `Sicher? (${nh} ✎)` : 'Sicher?'; setTimeout(() => { if (rb.isConnected) { delete rb.dataset.armed; rb.className = 'btn sec rmbtn'; rb.textContent = 'Entfernen'; } }, 4000); return; }
-    const t = n.title; removeNode(n.key); closeSheet(); rebuild(); heat(.2); toast('„' + t + '“ entfernt');
+    const t = n.title; grp(n.key).slice().forEach(removeNode); closeSheet(); rebuild(); heat(.2); toast('„' + t + '“ entfernt');
   };
+  sh.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { const d = db.nodes[b.dataset.lv]; if (d) openTitle(d.lang, d.title, null); });
   const hb = sh.querySelector('[data-hide]');
   if (hb) hb.onclick = () => { (db.hidden = db.hidden || []).push(n.key); (db.hts = db.hts || {})[n.key] = Date.now(); save(); closeSheet(); rebuild(); heat(.2); toast('„' + n.title + '“ wird nicht mehr vorgeschlagen'); };
   sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const m = G.by.get(b.dataset.k); if (m) { select(m); centerOn(m); } });
