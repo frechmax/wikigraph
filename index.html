@@ -517,7 +517,7 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
 /* ---------- storage ---------- */
 const S_KEY = 'wikigraph.v1';
 const blank = () => ({ v: 1, lang: 'de', nodes: {}, edges: [], alias: {}, pos: {}, hidden: [], showLocal: true, rank: { links: true, cs: true, hl: true, fair: true } });
-const VW = () => { const v = Object.assign({ start: 'local', imp: 0, edgeK: 3, bubbles: true, fade: true, layout: 'net', islands: true, ghostLines: false }, db.view || {}); if (v.layout !== 'time') v.layout = 'net'; return v; };
+const VW = () => { const v = Object.assign({ start: 'local', imp: 0, edgeK: 3, bubbles: true, fade: true, layout: 'net', islands: true, ghostLines: false }, db.view || {}); if (!['time', 'map', 'hist'].includes(v.layout)) v.layout = 'net'; return v; };
 const RK = () => {
   const r = db.rank;   // one-time: "Links deiner Artikel" is now off by default, also for saved settings
   if (r && !r.m1) { if (r.cs !== false || r.hl !== false) r.links = false; r.m1 = 1; }
@@ -1667,8 +1667,33 @@ function rebuild() {
 }
 /* ---------- alternative arrangement: timeline ---------- */
 function layoutTargets() {
-  const L = VW().layout; G.lanes = null; G.ticks = null;
-  G.nodes.forEach(n => { n.tx = n.ty = undefined; });
+  const L = VW().layout; G.lanes = null; G.ticks = null; G.hticks = null; G.geo = L === 'map' || L === 'hist';
+  G.nodes.forEach(n => { n.tx = n.ty = n.x1 = undefined; });
+  if (G.geo) {
+    if (L === 'map' && !G.world) world();
+    if (!factsBusy && navigator.onLine && Date.now() - (G.factsTry || 0) > 6e4 && Object.values(db.nodes).some(n => (n.qid && !(db.facts && db.facts[n.qid])) || (!n.qid && !n.noq))) {
+      G.factsTry = Date.now(); loadFacts(true).then(() => { if (VW().layout === L) { layoutTargets(); G.alpha = 1; loop(); } });
+    }
+    const fx = n => { const d = db.nodes[n.key]; return d && d.qid && db.facts && db.facts[d.qid]; };
+    if (L === 'map') {
+      for (const n of G.nodes) { const f = !n.ghost && fx(n); if (f && f.lat != null) { const [x, y] = proj(f.lon, f.lat); n.tx = x; n.ty = y; if (!G.focusSet) { n.x = x; n.y = y; } } }
+    } else {
+      const items = [];
+      for (const n of G.nodes) { const f = !n.ghost && fx(n); if (f && f.y0 != null) items.push([n, HX(f.y0), f.y1 != null && f.y1 > f.y0 ? HX(f.y1) : null]); }
+      items.sort((a, b) => a[1] - b[1]);
+      const rows = [];                                // pack lifespans into rows so bars and labels don't overlap
+      for (const [n, x0, x1] of items) {
+        const end = Math.max(x1 || x0, x0 + Math.min(n.title.length, 30) * 6.5 + 24);
+        let r = rows.findIndex(e => e < x0 - 10); if (r < 0) { r = rows.length; rows.push(0); }
+        rows[r] = end; n.tx = x0; n.ty = r * 44; n.x1 = x1;
+      }
+      const lo = items.length ? items[0][1] : 0, hi = items.length ? Math.max(...items.map(i => i[2] || i[1])) : 0;
+      for (const n of G.nodes) if (n.tx != null && !G.focusSet) { n.x = n.tx; n.y = n.ty; }
+      G.hticks = HTICKS.map(y => ({ x: HX(y), label: yearLabel(y) })).filter(t => t.x >= lo - 300 && t.x <= hi + 300).sort((a, b) => a.x - b.x);
+      for (let i = G.hticks.length - 1; i > 0; i--) if (G.hticks[i].x - G.hticks[i - 1].x < 70) G.hticks.splice(i - 1, 1);
+    }
+    return;
+  }
   if (L === 'time') {
     const vis = G.nodes.filter(n => !n.ghost), first = n => (db.nodes[n.key] || {}).first || 0;
     vis.sort((a, b) => first(a) - first(b));
@@ -1686,12 +1711,120 @@ function layoutTargets() {
     vis.forEach((n, i) => { const m = new Date(first(n)).toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }); if (m !== lastM) { G.ticks.push({ x: X(i) - 23, label: m }); lastM = m; } });
   }
 }
+/* ---------- map & history: places and dates from Wikidata ---------- */
+const proj = (lon, lat) => { const la = Math.max(-80, Math.min(84, lat)) * Math.PI / 180; return [lon * 9, -Math.log(Math.tan(Math.PI / 4 + la / 2)) * 180 / Math.PI * 9]; };
+// history axis: logarithmic in "years before 2100", so centuries, antiquity and deep time all fit
+const HX = y => -Math.log10(Math.max(1, 2100 - y)) * 1500;
+const HTICKS = [2000, 1950, 1900, 1850, 1800, 1700, 1600, 1500, 1400, 1200, 1000, 800, 500, 0, -500, -1000, -2000, -3000, -5000, -1e4, -3e4, -1e5, -3e5, -1e6, -1e7, -1e8, -1e9, -1e10];
+function yearLabel(y) {
+  if (y >= 0) return String(y);
+  const a = -y;
+  if (a >= 1e9) return (a / 1e9).toLocaleString('de-DE') + ' Mrd. J.';
+  if (a >= 1e6) return (a / 1e6).toLocaleString('de-DE') + ' Mio. J.';
+  return a.toLocaleString('de-DE') + ' v. Chr.';
+}
+function factText(f) {
+  if (!f) return '';
+  const y = v => v < 0 ? yearLabel(v) : String(v), parts = [];
+  if (f.y0 != null) parts.push(f.y1 != null && f.y1 !== f.y0 ? `${y(f.y0)} – ${y(f.y1)}` : y(f.y0));
+  if (f.place) parts.push((f.ps === 'birth' ? 'geb. in ' : '') + f.place);
+  return parts.join(' · ');
+}
+let factsBusy = null;
+async function loadFacts(quiet) {
+  if (factsBusy) return factsBusy;
+  return (factsBusy = (async () => {
+    db.facts = db.facts || {};
+    // articles read before Wikidata IDs were stored: look the ID up first
+    const noQ = Object.values(db.nodes).filter(n => !n.qid && !n.noq);
+    const byLang = {}; noQ.forEach(n => (byLang[n.lang] = byLang[n.lang] || []).push(n));
+    for (const [lang, list] of Object.entries(byLang)) for (let i = 0; i < list.length; i += 50) {
+      const part = list.slice(i, i + 50);
+      try {
+        const r = await fetch(`https://${lang}.wikipedia.org/w/api.php?action=query&prop=pageprops&ppprop=wikibase_item&redirects=1&format=json&formatversion=2&origin=*&titles=${encodeURIComponent(part.map(n => n.title).join('|'))}`).then(r => r.json());
+        const map = new Map(); (r.query.redirects || []).forEach(x => map.set(x.from, x.to)); (r.query.normalized || []).forEach(x => map.set(x.from, x.to));
+        const qs = new Map((r.query.pages || []).map(p => [p.title, p.pageprops && p.pageprops.wikibase_item]));
+        part.forEach(n => { const t = map.get(map.get(n.title) || n.title) || map.get(n.title) || n.title, q = qs.get(t); if (q) n.qid = q; else n.noq = 1; });
+      } catch (e) { break; }
+    }
+    const qs = [...new Set(Object.values(db.nodes).map(n => n.qid).filter(q => q && !db.facts[q]))];
+    let ok = true;
+    for (let i = 0; i < qs.length; i += 120) {
+      const part = qs.slice(i, i + 120);
+      const q = `SELECT ?a (SAMPLE(?c0) AS ?c) (SAMPLE(?cl0) AS ?cl) (SAMPLE(?cb0) AS ?cb) (SAMPLE(?ch0) AS ?ch) (SAMPLE(?pl0) AS ?pl) (SAMPLE(?bpl0) AS ?bpl) (SAMPLE(?hpl0) AS ?hpl)
+        (MIN(?b0) AS ?b) (MAX(?d0) AS ?d) (MIN(?s0) AS ?s) (MAX(?e0) AS ?e) (MIN(?t0) AS ?t) WHERE {
+        VALUES ?a { ${part.map(x => 'wd:' + x).join(' ')} }
+        OPTIONAL { ?a wdt:P625 ?c0 }
+        OPTIONAL { ?a wdt:P276 ?loc . ?loc wdt:P625 ?cl0 . OPTIONAL { ?loc rdfs:label ?pl0 . FILTER(LANG(?pl0) = "de") } }
+        OPTIONAL { ?a wdt:P19 ?bp . ?bp wdt:P625 ?cb0 . OPTIONAL { ?bp rdfs:label ?bpl0 . FILTER(LANG(?bpl0) = "de") } }
+        OPTIONAL { ?a wdt:P159 ?hq . ?hq wdt:P625 ?ch0 . OPTIONAL { ?hq rdfs:label ?hpl0 . FILTER(LANG(?hpl0) = "de") } }
+        OPTIONAL { ?a wdt:P569 ?b0 } OPTIONAL { ?a wdt:P570 ?d0 }
+        OPTIONAL { ?a wdt:P571|wdt:P580|wdt:P1619|wdt:P575 ?s0 } OPTIONAL { ?a wdt:P576|wdt:P582|wdt:P3999 ?e0 }
+        OPTIONAL { ?a wdt:P585|wdt:P577 ?t0 }
+      } GROUP BY ?a`;
+      try {
+        const r = await fetch('https://query.wikidata.org/sparql', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/sparql-results+json' }, body: 'query=' + encodeURIComponent(q) }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+        const yr = b => { if (!b) return null; const m = /^(-?\d+)-/.exec(b.value); return m ? +m[1] : null; };
+        const pt = b => { if (!b) return null; const m = /Point\(([-\d.eE]+) ([-\d.eE]+)\)/.exec(b.value); return m && !/[<>]/.test(b.value.split('Point')[0]) ? [+m[1], +m[2]] : null; };
+        const seen = new Set();
+        for (const b of r.results.bindings) {
+          const qid = b.a.value.split('/').pop(); seen.add(qid);
+          const f = { ts: Date.now() };
+          const c = pt(b.c), cl = pt(b.cl), cb = pt(b.cb), ch = pt(b.ch);
+          const pick = c ? [c, null, null] : cl ? [cl, b.pl, 'loc'] : ch ? [ch, b.hpl, 'hq'] : cb ? [cb, b.bpl, 'birth'] : null;
+          if (pick) { f.lon = pick[0][0]; f.lat = pick[0][1]; if (pick[1]) f.place = pick[1].value; if (pick[2]) f.ps = pick[2]; }
+          const y0 = yr(b.b) ?? yr(b.s) ?? yr(b.t), y1 = b.b ? yr(b.d) : (yr(b.e) ?? null);
+          if (y0 != null) { f.y0 = y0; if (y1 != null) f.y1 = y1; }
+          db.facts[qid] = f;
+        }
+        part.forEach(q => { if (!seen.has(q)) db.facts[q] = { ts: Date.now() }; });
+      } catch (e) { ok = false; break; }
+    }
+    save();
+    if (!ok && !quiet) toast('Wikidata gerade nicht erreichbar');
+    return ok;
+  })().finally(() => { factsBusy = null; }));
+}
+function geoSummary(L) {
+  const all = G.nodes.filter(n => !n.ghost), have = all.filter(n => n.tx != null).length;
+  return L === 'map' ? `${have} von ${all.length} Artikeln haben einen Ort` : `${have} von ${all.length} Artikeln haben eine Jahreszahl`;
+}
+let worldP = null;
+function world() {          // country outlines (Natural Earth 1:110m via world-atlas, TopoJSON) → rings in map coordinates
+  if (!worldP) worldP = fetch('data/countries-110m.json').then(r => r.json()).then(t => {
+    const [sx, sy] = t.transform.scale, [tx, ty] = t.transform.translate;
+    const arcs = t.arcs.map(a => { let x = 0, y = 0; return a.map(([dx, dy]) => { x += dx; y += dy; return [x * sx + tx, y * sy + ty]; }); });
+    const ring = idx => { const out = []; idx.forEach((i, j) => { const a = i < 0 ? arcs[~i].slice().reverse() : arcs[i]; out.push(...(j ? a.slice(1) : a)); });
+      let off = 0; return out.map(([lo, la], q) => { if (q) { const d = lo + off - out[q - 1][0] - (out[q - 1].off || 0); if (d > 180) off -= 360; else if (d < -180) off += 360; } out[q].off = off; return proj(lo + off, la); }); };   // unwrap across the date line
+    const polys = [];
+    for (const g of t.objects.countries.geometries) {
+      if (g.id === '010') continue;                  // Antarctica: huge in Mercator, no articles live there
+      if (g.type === 'Polygon') polys.push(g.arcs.map(ring));
+      else if (g.type === 'MultiPolygon') g.arcs.forEach(p => polys.push(p.map(ring)));
+    }
+    G.world = polys; requestDraw(); return polys;
+  }).catch(() => { worldP = null; });
+  return worldP;
+}
 function setLayout(L) {
   const V = VW(), was = V.layout; V.layout = L; db.view = V; save();
+  if ((L === 'map' || L === 'hist')) {
+    if (L === 'map') world();
+    const need = Object.values(db.nodes).some(n => (n.qid && !(db.facts && db.facts[n.qid])) || (!n.qid && !n.noq));
+    if (need) {
+      toast('Lade Orte und Jahreszahlen von Wikidata …');
+      loadFacts(false).then(() => { if (VW().layout === L) { layoutTargets(); snapGeo(L); } });
+    }
+  }
   if (was === 'net' && L !== 'net') persistPosNow();
   if (L === 'net') for (const n of G.nodes) { const p = db.pos[n.key]; if (p) { n.x = p[0]; n.y = p[1]; n.vx = n.vy = 0; } }
   layoutTargets(); G.alpha = 1; loop();
+  if (G.geo) { if (G.nodes.some(n => n.tx != null)) snapGeo(L); return; }
   setTimeout(() => fitNodes(G.nodes.filter(shown)), L === 'net' ? 900 : 700);
+}
+function snapGeo(L) {
+  for (const n of G.nodes) if (n.tx != null) { n.x = n.tx; n.y = n.ty; n.vx = n.vy = 0; }
+  G.alpha = 1; loop(); fitNodes(G.nodes.filter(shown)); toast(geoSummary(L));
 }
 function untangle(fresh) {
   if (VW().layout !== 'net') setLayout('net');
@@ -1790,8 +1923,9 @@ function tick() {
   const cx = F && G.focusC ? G.focusC[0] : 0, cy = F && G.focusC ? G.focusC[1] : 0, grav = F ? .012 : .004;
   const V = VW(), B = G.boost || 1;
   if (!F && V.layout !== 'net') {
-    for (const p of N) { if (p.tx == null || p.fixed) continue; p.vx += (p.tx - p.x) * .09; p.vy += (p.ty - p.y) * .09; p.vx *= .55; p.vy *= .55; p.x += p.vx; p.y += p.vy; }
-    collide(N, 1); G.alpha *= .97; return;
+    const M = G.geo ? N.filter(p => p.tx != null) : N;
+    for (const p of M) { if (p.tx == null || p.fixed) continue; p.vx += (p.tx - p.x) * .09; p.vy += (p.ty - p.y) * .09; p.vx *= .55; p.vy *= .55; p.x += p.vx; p.y += p.vy; }
+    collide(M, V.layout === 'map' ? .35 : 1); G.alpha *= .97; return;
   }
   if (N.length > 900) gridRepulse(N, a * B);
   else for (let i = 0; i < N.length; i++) {
@@ -1892,7 +2026,7 @@ function stepAnim() {
 }
 const toScreen = (x, y) => [G.W / 2 + G.cam.x + x * G.cam.k, G.H / 2 + G.cam.y + y * G.cam.k];
 const toWorld = (sx, sy) => [(sx - G.W / 2 - G.cam.x) / G.cam.k, (sy - G.H / 2 - G.cam.y) / G.cam.k];
-const shown = n => !G.focusSet || G.focusSet.has(n);
+const shown = n => (!G.geo || n.tx != null) && (!G.focusSet || G.focusSet.has(n));   // map / history: only articles with a place or a date
 /* "Zuletzt gelesen": colour ramp by rank of the last visit (newest = hot, oldest = cool), so it spreads over any time span */
 const REC = ['#e03131', '#f76707', '#f59f00', '#94a83a', '#3b9a8f', '#4c6ef5', '#7c7f9e'];
 function recRank() {
@@ -1989,6 +2123,20 @@ function draw() {
   const showGhostL = V.ghostLines || !!G.focusSet;
   const cent = new Map();
   if (V.layout === 'net') { for (const n of G.nodes) if (n.cl >= 0 && !n.ghost) { let c = cent.get(n.cl); if (!c) cent.set(n.cl, c = { x: 0, y: 0, n: 0 }); c.x += n.x; c.y += n.y; c.n++; } cent.forEach(c => { c.x /= c.n; c.y /= c.n; }); }
+  if (V.layout === 'map' && G.world) {             // countries
+    ctx.beginPath();
+    for (const poly of G.world) for (const r of poly) { if (!r.length) continue; ctx.moveTo(r[0][0], r[0][1]); for (let i = 1; i < r.length; i++) ctx.lineTo(r[i][0], r[i][1]); ctx.closePath(); }
+    ctx.fillStyle = TC.ink; ctx.globalAlpha = .07; ctx.fill('evenodd'); ctx.globalAlpha = .18; ctx.strokeStyle = TC.ink; ctx.lineWidth = 1 / k; ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  if (V.layout === 'hist' && G.hticks) {           // year grid + lifespans
+    const [, wy0] = toWorld(0, 0), [, wy1] = toWorld(0, H);
+    ctx.globalAlpha = .25; ctx.strokeStyle = TC.sem; ctx.lineWidth = 1 / k; ctx.setLineDash([2 / k, 6 / k]); ctx.beginPath();
+    for (const t of G.hticks) { ctx.moveTo(t.x, wy0); ctx.lineTo(t.x, wy1); }
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.lineCap = 'round'; ctx.lineWidth = 6;
+    for (const n of G.nodes) if (n.x1 != null && shown(n)) { ctx.globalAlpha = n === sel ? .7 : .35; ctx.strokeStyle = n.cl >= 0 ? pal(n.cl) : TC.sem; ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(n.x1 + (n.x - n.tx), n.y); ctx.stroke(); }
+    ctx.lineCap = 'butt'; ctx.globalAlpha = 1;
+  }
   if (V.layout === 'time' && G.ticks) {
     ctx.globalAlpha = .25; ctx.strokeStyle = TC.sem; ctx.lineWidth = 1 / k; ctx.setLineDash([2 / k, 6 / k]); ctx.beginPath();
     const [, wy0] = toWorld(0, 0), [, wy1] = toWorld(0, H);
@@ -1998,6 +2146,7 @@ function draw() {
   for (const l of G.links) {
     if (!shown(l.a) || !shown(l.b)) continue;
     if (l.type === 'ghost' && !showGhostL && !(sel && (l.a === sel || l.b === sel))) continue;
+    if (G.geo && !(sel && (l.a === sel || l.b === sel))) continue;   // map / history: only the selected article's links
     if ((l.a.x < vx0 && l.b.x < vx0) || (l.a.x > vx1 && l.b.x > vx1) || (l.a.y < vy0 && l.b.y < vy0) || (l.a.y > vy1 && l.b.y > vy1)) continue;
     const on = sel ? (l.a === sel || l.b === sel) : hc != null ? (l.a.cl === hc && l.b.cl === hc) : true;
     const g = l.type + (on ? 1 : 0) + (l.type === 'nav' ? Math.min(3, l.c) : '');
@@ -2033,24 +2182,26 @@ function draw() {
     }
   }
   ctx.setLineDash([]);
-  // nodes
+  // nodes (map / history: keep them visible when zoomed far out)
+  const geoR = G.geo ? 5.5 / k : 0;
   for (const n of G.nodes) {
     if (!shown(n)) continue;
+    const nr = Math.max(n.r, geoR);
     if (n.x < vx0 - 20 || n.x > vx1 + 20 || n.y < vy0 - 20 || n.y > vy1 + 20) continue;
     let al = lit(n) ? 1 : .15;
     if (G.color !== 'recent' && V.fade && !n.ghost && n.key !== curKey) al *= Math.max(.4, 1 - (now - n.last) / (180 * 864e5));
     al *= nodeA;
     ctx.globalAlpha = al;
-    ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 6.2832);
+    ctx.beginPath(); ctx.arc(n.x, n.y, nr, 0, 6.2832);
     if (n.ghost) {
       ctx.fillStyle = TC.bg; ctx.fill(); ctx.strokeStyle = n.path ? TC.ink : n.cl >= 0 && G.color === 'topic' ? pal(n.cl) : TC.ghost; ctx.lineWidth = 1.6 / Math.sqrt(k); ctx.setLineDash([2.5 / k, 2 / k]); ctx.stroke(); ctx.setLineDash([]);
-      if (n.hl) { ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(1.6, n.r * .35), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); }
+      if (n.hl) { ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(1.6, nr * .35), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); }
     }
     else { ctx.fillStyle = nodeColor(n); ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.5 / k; ctx.stroke(); }
     ctx.globalAlpha = lit(n) ? 1 : .3;
-    if (!n.ghost && db.hl && db.hl[n.key]) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + n.r * .75, n.y - n.r * .75, Math.max(2.6, n.r * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
-    if (n.key === curKey) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 6 / k, 0, 6.2832); ctx.strokeStyle = TC.accent; ctx.lineWidth = 2 / k; ctx.setLineDash([3 / k, 3 / k]); ctx.stroke(); ctx.setLineDash([]); }
-    if (n === sel) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 3.5 / k, 0, 6.2832); ctx.strokeStyle = TC.ink; ctx.lineWidth = 2 / k; ctx.stroke(); }
+    if (!n.ghost && db.hl && db.hl[n.key]) { ctx.globalAlpha = lit(n) ? 1 : .3; ctx.beginPath(); ctx.arc(n.x + nr * .75, n.y - nr * .75, Math.max(2.6, nr * .32), 0, 6.2832); ctx.fillStyle = '#e5b20f'; ctx.fill(); ctx.strokeStyle = TC.bg; ctx.lineWidth = 1.2 / k; ctx.stroke(); }
+    if (n.key === curKey) { ctx.beginPath(); ctx.arc(n.x, n.y, nr + 6 / k, 0, 6.2832); ctx.strokeStyle = TC.accent; ctx.lineWidth = 2 / k; ctx.setLineDash([3 / k, 3 / k]); ctx.stroke(); ctx.setLineDash([]); }
+    if (n === sel) { ctx.beginPath(); ctx.arc(n.x, n.y, nr + 3.5 / k, 0, 6.2832); ctx.strokeStyle = TC.ink; ctx.lineWidth = 2 / k; ctx.stroke(); }
   }
   ctx.globalAlpha = 1;
   // labels in screen space, most important first, no overlaps
@@ -2060,6 +2211,13 @@ function draw() {
     for (const ln of G.lanes) { const [, sy] = toScreen(0, ln.y); if (sy < 10 || sy > H - 10) continue; ctx.textAlign = 'left'; ctx.font = '600 11px -apple-system,Segoe UI,Roboto,sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = TC.bg; ctx.strokeText(ln.name, 8, sy - 22); ctx.fillStyle = ln.color; ctx.fillText(ln.name, 8, sy - 22); }
     ctx.textAlign = 'center'; ctx.font = '11px -apple-system,Segoe UI,Roboto,sans-serif'; ctx.fillStyle = TC.ink; ctx.globalAlpha = .6;
     for (const t of G.ticks || []) { const [sx] = toScreen(t.x, 0); if (sx > 0 && sx < W) ctx.fillText(t.label, sx + 23, 12); }
+    ctx.globalAlpha = 1;
+  }
+  if (V.layout === 'hist' && G.hticks) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '600 11px -apple-system,Segoe UI,Roboto,sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = TC.bg; ctx.fillStyle = TC.ink; ctx.globalAlpha = .65;
+    let lastX = -1e9;                                // newest years win when labels would overlap
+    for (const t of G.hticks.slice().reverse()) { const [sx] = toScreen(t.x, 0), w = ctx.measureText(t.label).width; if (sx > 10 && sx < W - 10 && (lastX < -1e8 || sx + w / 2 + 8 < lastX)) { ctx.strokeText(t.label, sx, 12); ctx.fillText(t.label, sx, 12); lastX = sx - w / 2; } }
     ctx.globalAlpha = 1;
   }
   if (!G.lbl || nodeA < .5) return;
@@ -2074,7 +2232,7 @@ function draw() {
     else if (sel) { if (sel.adj.has(n)) p = 5e5 + n.w; else if (G.focusSet) p = 2e5 + n.w; else continue; }   // in focus mode keep all labels, neighbours of the selection first
     else if (hc != null) { if (n.cl !== hc) continue; p = 3e5 + n.w; }
     else p = (n.key === curKey ? 4e5 : 0) + (n.ghost ? n.c : 100 + n.w * 10);
-    if (!sel && hc == null && !G.focusSet) {
+    if (!sel && hc == null && !G.focusSet && !G.geo) {
       if (n.ghost && k < .9) continue;
       if (k < .45 && n.w < 3 && n.key !== curKey) continue;
     }
@@ -2087,7 +2245,7 @@ function draw() {
     if (sx < -100 || sx > W + 100 || sy < -40 || sy > H + 40) continue;
     ctx.font = (n.ghost ? 'italic ' : (n === sel || n.key === curKey ? '600 ' : '')) + '12px -apple-system,Segoe UI,Roboto,sans-serif';
     const t = n.title.length > 30 ? n.title.slice(0, 28) + '…' : n.title;
-    const w = ctx.measureText(t).width, y = sy + n.r * k + 3;
+    const w = ctx.measureText(t).width, y = sy + (G.geo ? Math.max(n.r * k, 5.5) : n.r * k) + 3;
     const r = [sx - w / 2 - 2, y - 1, sx + w / 2 + 2, y + 15];
     if (placed.some(q => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1])) continue;
     placed.push(r);
@@ -2104,7 +2262,7 @@ function fitNodes(list, maxK, instant) {
   for (const n of list) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
   const w = Math.max(80, x1 - x0), h = Math.max(80, y1 - y0);
   const occ = sheetOcc(), ox = sheetOccX(), top = G.focusSet ? 48 : 0;   // focus chip sits at the top
-  const k = Math.min(maxK || 2.2, Math.max(.12, Math.min((G.W - ox) / (w + 90), (G.H - occ - top) / (h + 110))));
+  const k = Math.min(maxK || 2.2, Math.max(G.geo ? .02 : .12, Math.min((G.W - ox) / (w + 90), (G.H - occ - top) / (h + 110))));
   flyTo(-(x0 + x1) / 2 * k - ox / 2, -(y0 + y1) / 2 * k - (occ - top) / 2, k);
   if (instant) { G.cam = { ...G.anim.to }; G.anim = null; }
 }
@@ -2119,10 +2277,10 @@ function graphEnter() {
   else renderGraphHeader(analyze(G.tMax, G.tMin));
   if (!G.fitted) {
     for (let i = 0; i < 120 && G.alpha > .02; i++) tick();
-    fitNodes(G.nodes, 2.2, true); G.fitted = true;
+    fitNodes(G.nodes.filter(shown), 2.2, true); G.fitted = true;
   }
   if (G.focusKey && G.by.has(G.focusKey)) { const n = G.by.get(G.focusKey); select(n); centerOn(n); }
-  else if (VW().start === 'local' && current) {
+  else if (VW().start === 'local' && current && !G.geo) {
     // open as local graph around the article you're reading (only once per article, so "✕" sticks)
     const ck = K(current.lang, current.title);
     if (G.localFor !== ck && G.by.has(ck)) { G.localFor = ck; G.hiCl = null; setFocus(ck, 2); fitNodes([...G.focusSet], 1.6, true); }
@@ -2168,7 +2326,8 @@ $('gFilter').onclick = () => {
   pb.innerHTML = `<div class="pophead">Ansicht</div>
     <div class="frow">${chip('ghost', G.ghost, 'Vorschläge')}${chip('sem', G.sem, 'Querverbindungen')}${chip('lbl', G.lbl, 'Labels')}${chip('wd', !!db.showWd, 'Wikidata-Beziehungen')}</div>
     <div class="flab">Anordnung</div>
-    <div class="frow">${chip('v:layout:net', VW().layout === 'net', 'Netz')}${chip('v:layout:time', VW().layout === 'time', 'Zeitstrahl')}<button class="chip act" id="relayout" type="button">↻ Neu anordnen</button></div>
+    <div class="frow">${chip('v:layout:net', VW().layout === 'net', 'Netz')}${chip('v:layout:time', VW().layout === 'time', 'Lesezeit')}${chip('v:layout:map', VW().layout === 'map', 'Karte')}${chip('v:layout:hist', VW().layout === 'hist', 'Geschichte')}</div>
+    <div class="frow" style="margin-top:8px"><button class="chip act" id="relayout" type="button">↻ Neu anordnen</button></div>
     <div class="flab">Linien &amp; Gruppen</div>
     <div class="frow">${chip('v:islands', VW().islands, 'Themen als Inseln')}${chip('v:ghostLines', VW().ghostLines, 'Vorschlags-Linien immer')}</div>
     <div class="flab">Beim Öffnen zeigen</div>
@@ -2327,7 +2486,7 @@ cv.addEventListener('pointermove', e => {
     if (gest.moved) { const [wx, wy] = toWorld(e.offsetX, e.offsetY); gest.n.x = wx; gest.n.y = wy; gest.n.fixed = true; G.alpha = Math.max(G.alpha, .12); loop(); }
   } else if (gest.type === 'pinch' && ptrs.size >= 2) {
     const [a, b] = [...ptrs.values()], m = mid(a, b);
-    const k = Math.min(5, Math.max(.08, gest.k0 * dist(a, b) / gest.d0));
+    const k = Math.min(5, Math.max(G.geo ? .02 : .08, gest.k0 * dist(a, b) / gest.d0));
     G.cam.k = k;
     G.cam.x = m.x - G.W / 2 - gest.w0[0] * k; G.cam.y = m.y - G.H / 2 - gest.w0[1] * k;
     requestDraw();
@@ -2347,7 +2506,7 @@ cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('wheel', e => {
   e.preventDefault(); G.anim = null;
   const w = toWorld(e.offsetX, e.offsetY);
-  const k = Math.min(5, Math.max(.08, G.cam.k * Math.exp(-e.deltaY * .0015)));
+  const k = Math.min(5, Math.max(G.geo ? .02 : .08, G.cam.k * Math.exp(-e.deltaY * .0015)));
   G.cam.k = k; G.cam.x = e.offsetX - G.W / 2 - w[0] * k; G.cam.y = e.offsetY - G.H / 2 - w[1] * k;
   requestDraw();
 }, { passive: false });
@@ -2391,7 +2550,7 @@ function select(n) {
   } else {
     const d = db.nodes[n.key];
     html = `<div class="st">${esc(n.title)}</div>
-      <div class="sm">${d.desc ? esc(d.desc) + '<br>' : ''}${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)} ${clTag}</div>
+      <div class="sm">${d.desc ? esc(d.desc) + '<br>' : ''}${d.qid && db.facts && factText(db.facts[d.qid]) ? esc(factText(db.facts[d.qid])) + '<br>' : ''}${d.visits.length}× gelesen · zuerst ${fmtDate(d.first)} · zuletzt ${fmtDate(d.last)} ${clTag}</div>
       <div class="sbtns"><button class="btn" data-open>Lesen</button><button class="btn sec" data-focus>${G.focus === n.key ? 'Fokus aus' : 'Fokus'}</button><button class="btn sec" data-path>⇄ Verbindung</button>${db.hl && db.hl[n.key] ? `<button class="btn sec" data-notes>✎ ${db.hl[n.key].length} Markierung${db.hl[n.key].length > 1 ? 'en' : ''}</button>` : ''}<button class="btn sec rmbtn" data-rm>Entfernen</button></div>`;
     const wds = wdOf(n.key);
     if (wds.length && db.showWd) html += `<div class="nbh">Wikidata-Beziehungen</div><div class="wdl">${wds.slice(0, 12).map(e => { const o = e.a === n.key ? e.b : e.a, t = db.nodes[o] ? db.nodes[o].title : o; return `<button type="button" data-k="${esc(o)}">${e.a === n.key ? `<span>${esc(e.l)}</span> → <b>${esc(t)}</b>` : `<b>${esc(t)}</b> → <span>${esc(e.l)}</span> → hier`}</button>`; }).join('')}</div>`;
