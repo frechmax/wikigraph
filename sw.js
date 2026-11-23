@@ -61,8 +61,14 @@ async function imgFirst(req) {
     const res = await fetch(req.url, { mode: 'cors', credentials: 'omit' });
     if (res.ok) cache.put(req.url, res.clone());
     return res;
-  } catch (e) { return fetch(req); }
+  } catch (e) {
+    // offline and this exact size isn't stored: use another stored size of the same image (…/220px-X.jpg vs …/330px-X.jpg)
+    const base = imgBase(req.url);
+    for (const k of await cache.keys()) if (imgBase(k.url) === base) return cache.match(k);
+    return fetch(req);
+  }
 }
+const imgBase = u => u.replace(/\/thumb\//, '/').replace(/\/(\d+px|lossy-page\d+-\d+px|page\d+-\d+px)-[^/]+$/, '');
 async function trim(cache, max) {
   const keys = await cache.keys();
   for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i]);

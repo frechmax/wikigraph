@@ -3450,7 +3450,13 @@ function offImgUrls(root) {
   });
   return [...urls];
 }
-async function offFetchImgs(urls) { let i = 0; const w = async () => { while (i < urls.length) { const u = urls[i++]; try { await fetch(u, { mode: 'cors', credentials: 'omit' }); } catch (e) {} } }; await Promise.all([w(), w(), w()]); }
+// store images directly in the image cache (doesn't depend on the service worker having the new setting yet)
+async function offFetchImgs(urls) {
+  let c = null; try { c = await caches.open('wg-v1-images'); } catch (e) { }
+  let i = 0;
+  const w = async () => { while (i < urls.length) { const u = urls[i++]; try { if (c && await c.match(u)) continue; const r = await fetch(u, { mode: 'cors', credentials: 'omit' }); if (c && r.ok && OFF().img) await c.put(u, r); } catch (e) { } } };
+  await Promise.all([w(), w(), w()]);
+}
 let offRun = null;
 async function offBackfill() {      // save everything you have read so far
   if (offRun || !navigator.onLine) return;
@@ -3464,7 +3470,7 @@ async function offBackfill() {      // save everything you have read so far
     }
   };
   await Promise.all([work(), work()]);
-  offRun = null; OFF().doneTs = Date.now(); save(); offInfo(true);
+  offRun = null; OFF().doneTs = Date.now(); if (img) OFF().imgV = 2; save(); offInfo(true);
 }
 async function offInfo(measure) {
   const el = $('offInfo'); if (!el) return;
@@ -3495,6 +3501,8 @@ async function offToggle(which) {
   if (!navigator.onLine) toast('Gespeichert wird, sobald du online bist'); else offBackfill();
 }
 $('offT').onclick = () => offToggle('all');
+// images switched on before this fix weren't stored for older articles: fetch the missing ones once
+setTimeout(() => { if (OFF().img && (OFF().imgV || 0) < 2 && navigator.onLine) offBackfill(); }, 8000);
 $('offI').onclick = () => offToggle('img');
 offSync();
 window.addEventListener('offline', () => toast('Offline – gelesene Artikel bleiben lesbar'));
