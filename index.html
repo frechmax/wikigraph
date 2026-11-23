@@ -2763,8 +2763,10 @@ cv.addEventListener('wheel', e => {
   G.cam.k = k; G.cam.x = e.offsetX - G.W / 2 - w[0] * k; G.cam.y = e.offsetY - G.H / 2 - w[1] * k;
   requestDraw();
 }, { passive: false });
+let focusOffT = 0;
 function tap(sx, sy, n) {
   const now = performance.now();
+  clearTimeout(focusOffT); focusOffT = 0;
   if (G.pickPlace && G.layout === 'map' && Date.now() < G.pickPlace) return nearPickAt(sx, sy);
   if (!n && lastTap && now - lastTap.t < 320 && Math.hypot(sx - lastTap.x, sy - lastTap.y) < 30) { // double tap = zoom in
     lastTap = null;
@@ -2783,7 +2785,11 @@ function tap(sx, sy, n) {
     const g = bubbleGeo().filter(g => Math.hypot(g.x - wx, g.y - wy) < g.r).sort((a, b) => a.r - b.r)[0];
     if (g) { G.hiCl = g.c.id; renderGraphHeader(analyze(G.tMax, G.tMin)); fitNodes(g.c.members, 1.2); return; }
   }
-  if (n) { select(n); centerOn(n, G.cam.k); } else { closeSheet(); if (G.hiCl != null) { G.hiCl = null; renderGraphHeader(analyze(G.tMax, G.tMin)); } }
+  if (n) { select(n); centerOn(n, G.cam.k); return; }
+  // empty tap: first close an open sheet, otherwise leave focus mode (delayed so a double tap still zooms)
+  const wasSel = !!G.sel || !!G.pick;
+  closeSheet(); if (G.hiCl != null) { G.hiCl = null; renderGraphHeader(analyze(G.tMax, G.tMin)); }
+  if (G.focus && !wasSel) focusOffT = setTimeout(() => { focusOffT = 0; const x = $('focuschip').querySelector('[data-x]'); if (x && G.focus) x.click(); }, 330);
 }
 
 /* sheet */
