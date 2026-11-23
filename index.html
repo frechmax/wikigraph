@@ -65,6 +65,10 @@ nav.tabs button.on{color:var(--accent)}
 .nearbtn b{font-size:15px}.nearbtn span{font-size:13px;color:var(--muted)}
 .nearerr{font-size:13px;color:var(--muted);margin:8px 2px}
 .nearrow{margin:0 0 6px;align-items:center}.nearrow .nsep{flex:0 0 6px}
+.nearsrcbtn{max-width:calc(100% - 50px);overflow:hidden;text-overflow:ellipsis}
+.nearoff{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted);margin:18px 2px 4px}
+.nearform{display:flex;gap:6px;margin-top:8px}.nearform input{flex:1;min-width:0;font:inherit;font-size:15px;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+.nearhit{display:block;width:100%;text-align:left;font:inherit;font-size:13px;padding:8px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);cursor:pointer}
 h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 4px}
 .empty{color:var(--muted);text-align:center;padding:40px 20px}
 /* reader */
@@ -783,6 +787,10 @@ function renderHome() {
     home.insertAdjacentHTML('beforeend', `<div class="empty"><svg class="logo-big" viewBox="78 84 362 350" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M132 380 L 214 300 L 262 336 L 330 228" stroke-width="15"/><path d="M352 196 L 384 142" stroke-width="11" stroke-dasharray="1 20"/></g><g fill="currentColor"><circle cx="132" cy="380" r="44"/><circle cx="214" cy="300" r="30"/><circle cx="262" cy="336" r="24"/><circle cx="330" cy="228" r="30"/></g><circle cx="392" cy="128" r="20" fill="none" stroke="var(--logoacc)" stroke-width="11"/></svg><br>Alles, was du hier liest, landet automatisch in deinem Graphen.<br><br>Fang einfach mit einer Suche an.</div>`);
     return;
   }
+  home.insertAdjacentHTML('beforeend', '<h2 class="sec">Zuletzt gelesen</h2>');
+  const ul2 = document.createElement('ul'); ul2.className = 'list';
+  nodes.sort((a, b) => b.last - a.last).slice(0, 6).forEach(n => ul2.appendChild(resultItem({ title: n.title, desc: n.desc || fmtDate(n.last) }, n.lang)));
+  home.appendChild(ul2);
   home.appendChild(nearBox());
   const an = analyze(Infinity);
   if (an.ghosts.length) {
@@ -794,19 +802,19 @@ function renderHome() {
     });
     home.appendChild(ul);
   }
-  home.insertAdjacentHTML('beforeend', '<h2 class="sec">Zuletzt gelesen</h2>');
-  const ul2 = document.createElement('ul'); ul2.className = 'list';
-  nodes.sort((a, b) => b.last - a.last).slice(0, 10).forEach(n => ul2.appendChild(resultItem({ title: n.title, desc: n.desc || fmtDate(n.last) }, n.lang)));
-  home.appendChild(ul2);
 }
 
-/* ---------- nearby: Wikipedia articles around you, with the ones that fit your graph first ---------- */
-const NEAR = { r: 2000, sort: 'fit', pos: null, at: 0, list: null, lang: null, busy: false, err: '' };
+/* ---------- nearby: Wikipedia articles around you, with the ones that fit your graph first ----------
+   location source (db.near): GPS, a place you chose (address search or tap on the map), or off */
+const NEAR = { r: 2000, sort: 'fit', pos: null, at: 0, list: null, lang: null, busy: false, err: '', edit: false, hits: null };
+const NS = () => db.near || (db.near = {});
 function nearBox() {
   const box = document.createElement('div'); box.id = 'nearbox';
   renderNear(box);
-  // permission already given earlier: refresh quietly (at most every 5 minutes)
-  if (!NEAR.busy && Date.now() - NEAR.at > 3e5 && navigator.permissions && navigator.geolocation) navigator.permissions.query({ name: 'geolocation' }).then(p => { if (p.state === 'granted') nearLoad(); }).catch(() => {});
+  const m = NS().mode;
+  if (m === 'place' && NS().place && (!NEAR.list || NEAR.src !== 'place:' + NS().place.lat)) nearLoad();
+  // GPS permission already given earlier: refresh quietly (at most every 5 minutes)
+  else if (m === 'gps' && !NEAR.busy && Date.now() - NEAR.at > 3e5 && navigator.permissions && navigator.geolocation) navigator.permissions.query({ name: 'geolocation' }).then(p => { if (p.state === 'granted') nearLoad(); }).catch(() => {});
   return box;
 }
 function nearArrow(lat1, lon1, lat2, lon2) {
@@ -817,42 +825,88 @@ function nearArrow(lat1, lon1, lat2, lon2) {
 const fmtDist = m => m < 1000 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' km';
 function renderNear(box) {
   box = box || $('nearbox'); if (!box) return;
-  const chip = (t, on, l) => `<button type="button" class="chip${on ? ' on' : ''}" data-n="${t}">${l}</button>`;
+  const S = NS(), chip = (t, on, l) => `<button type="button" class="chip${on ? ' on' : ''}" data-n="${t}">${l}</button>`;
+  const srcLabel = S.mode === 'place' && S.place ? '📌 ' + esc(S.place.name || 'Gewählter Ort') : '📍 Mein Standort (GPS)';
   let h = `<h2 class="sec">In der Nähe</h2>`;
-  if (!NEAR.list && !NEAR.busy) {
-    h += `<button type="button" class="nearbtn" data-n="go"><b>📍 Was gibt es hier?</b><span>Wikipedia-Artikel um dich herum, passend zu deinen Themen zuerst</span></button>${NEAR.err ? `<div class="nearerr">${esc(NEAR.err)}</div>` : ''}`;
+  if (S.mode === 'off') {
+    box.innerHTML = `<div class="nearoff"><span>In der Nähe ist ausgeschaltet.</span><button type="button" class="chip act" data-n="src">Einschalten</button></div>`;
   } else {
-    h += `<div class="frow nearrow">${chip('r:500', NEAR.r === 500, '500 m')}${chip('r:2000', NEAR.r === 2000, '2 km')}${chip('r:10000', NEAR.r === 10000, '10 km')}<span class="nsep"></span>${chip('s:fit', NEAR.sort === 'fit', 'Passend')}${chip('s:dist', NEAR.sort === 'dist', 'Nächste')}<button type="button" class="chip act" data-n="go" aria-label="Neu orten">↻</button></div>`;
-    if (NEAR.busy && !NEAR.list) h += '<div class="nearerr">Suche deinen Standort …</div>';
+    if (!S.mode || NEAR.edit) {
+      h += `<div class="nearsrc">${!S.mode ? '<div class="nearerr" style="margin-top:0">Wikipedia-Artikel um einen Ort herum, passend zu deinen Themen zuerst. Wo soll gesucht werden?</div>' : ''}
+        <div class="frow">${chip('m:gps', S.mode === 'gps', '📍 GPS')}${chip('m:addr', NEAR.addr, '🔎 Adresse')}${chip('m:map', false, '🗺️ Auf Karte wählen')}${chip('m:off', false, 'Aus')}</div>
+        ${NEAR.addr ? `<form class="nearform"><input type="search" placeholder="Adresse oder Ort, z. B. Kollwitzplatz Berlin" enterkeyhint="search" autocomplete="off"><button class="chip" type="submit">Suchen</button></form>
+          ${NEAR.hits ? (NEAR.hits.length ? NEAR.hits.map((x, i) => `<button type="button" class="nearhit" data-n="h:${i}">${esc(x.display_name)}</button>`).join('') : '<div class="nearerr">Nichts gefunden.</div>') : ''}` : ''}</div>`;
+    } else {
+      h += `<div class="frow nearrow"><button type="button" class="chip act nearsrcbtn" data-n="src">${srcLabel} ▾</button><button type="button" class="chip act" data-n="go" aria-label="Neu laden">↻</button></div>
+        <div class="frow nearrow">${chip('r:500', NEAR.r === 500, '500 m')}${chip('r:2000', NEAR.r === 2000, '2 km')}${chip('r:10000', NEAR.r === 10000, '10 km')}${chip('s:fit', NEAR.sort === 'fit', 'Passend')}${chip('s:dist', NEAR.sort === 'dist', 'Nah')}</div>`;
+      if (NEAR.busy && !NEAR.list) h += `<div class="nearerr">${S.mode === 'gps' ? 'Suche deinen Standort …' : 'Lade …'}</div>`;
+      if (NEAR.err) h += `<div class="nearerr">${esc(NEAR.err)}</div>`;
+    }
+    box.innerHTML = h;
+    if (NEAR.list && S.mode && !NEAR.edit) {
+      const ul = document.createElement('ul'); ul.className = 'list';
+      const L = NEAR.list.filter(x => x.dist <= NEAR.r).sort((a, b) => NEAR.sort === 'dist' ? a.dist - b.dist : b.fit - a.fit || a.dist - b.dist).slice(0, 15);
+      if (!L.length) ul.innerHTML = `<div class="empty">Im Umkreis von ${fmtDist(NEAR.r)} gibt es keine Artikel mit Koordinaten.</div>`;
+      L.forEach(x => ul.appendChild(resultItem({ title: x.title, desc: `${x.arrow} ${fmtDist(x.dist)}${x.desc ? ' · ' + x.desc : ''}`, thumb: x.thumb, badge: x.links ? (x.links > 1 ? x.links + '× verlinkt' : 'verbunden') : '' }, NEAR.lang)));
+      box.appendChild(ul);
+    }
   }
-  box.innerHTML = h;
-  if (NEAR.list) {
-    const ul = document.createElement('ul'); ul.className = 'list';
-    const L = NEAR.list.filter(x => x.dist <= NEAR.r).sort((a, b) => NEAR.sort === 'dist' ? a.dist - b.dist : b.fit - a.fit || a.dist - b.dist).slice(0, 15);
-    if (!L.length) ul.innerHTML = `<div class="empty">Im Umkreis von ${fmtDist(NEAR.r)} gibt es keine Artikel mit Koordinaten.</div>`;
-    L.forEach(x => {
-      const li = resultItem({ title: x.title, desc: `${x.arrow} ${fmtDist(x.dist)}${x.desc ? ' · ' + x.desc : ''}`, thumb: x.thumb, badge: x.links ? (x.links > 1 ? x.links + '× verlinkt' : 'verbunden') : '' }, NEAR.lang);
-      ul.appendChild(li);
-    });
-    box.appendChild(ul);
-  }
+  const f = box.querySelector('.nearform');
+  if (f) { const inp = f.querySelector('input'); if (NEAR.addrQ) inp.value = NEAR.addrQ; if (!NEAR.hits) setTimeout(() => inp.focus(), 0); f.onsubmit = e => { e.preventDefault(); nearGeocode(inp.value); }; }
   box.querySelectorAll('[data-n]').forEach(b => b.onclick = () => {
-    const t = b.dataset.n;
+    const t = b.dataset.n, S2 = NS();
     if (t === 'go') return nearLoad(true);
-    if (t.startsWith('r:')) { NEAR.r = +t.slice(2); if (NEAR.r > NEAR.loadedR) nearLoad(); else renderNear(); }
+    if (t === 'src') { if (S2.mode === 'off') S2.mode = null; NEAR.edit = true; NEAR.addr = false; NEAR.hits = null; save(); return renderNear(); }
+    if (t === 'm:gps') { S2.mode = 'gps'; NEAR.edit = false; NEAR.list = null; save(); return nearLoad(true); }
+    if (t === 'm:off') { S2.mode = 'off'; NEAR.edit = false; NEAR.list = null; save(); return renderNear(); }
+    if (t === 'm:addr') { NEAR.addr = !NEAR.addr; NEAR.hits = null; return renderNear(); }
+    if (t === 'm:map') return nearPickOnMap();
+    if (t.startsWith('h:')) { const x = NEAR.hits[+t.slice(2)]; return nearSetPlace(+x.lat, +x.lon, x.display_name.split(',').slice(0, 2).join(',').trim()); }
+    if (t.startsWith('r:')) { NEAR.r = +t.slice(2); if (NEAR.r > (NEAR.loadedR || 0)) nearLoad(); else renderNear(); }
     if (t.startsWith('s:')) { NEAR.sort = t.slice(2); renderNear(); }
   });
 }
+async function nearGeocode(q) {
+  q = (q || '').trim(); if (!q) return;
+  NEAR.addrQ = q; NEAR.hits = null;
+  try {
+    NEAR.hits = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=de&q=${encodeURIComponent(q)}`).then(r => r.json());
+  } catch (e) { NEAR.hits = []; }
+  renderNear();
+}
+function nearSetPlace(lat, lon, name) {
+  const S = NS(); S.mode = 'place'; S.place = { lat, lon, name: name || '' }; save();
+  NEAR.edit = false; NEAR.addr = false; NEAR.hits = null; NEAR.list = null;
+  nearLoad();
+}
+function nearPickOnMap() {
+  NEAR.edit = false;
+  G.pickPlace = Date.now() + 120000;               // pick within 2 minutes, otherwise taps behave normally again
+  if (VW().layout !== 'map') setLayout('map');
+  location.hash = '#graph';
+  setTimeout(() => toast('Tippe auf die Karte, um den Ort festzulegen'), 400);
+}
+// called from the graph's tap handler while picking a place on the map
+function nearPickAt(sx, sy) {
+  const [x, y] = toWorld(sx, sy), lon = x / 9, lat = (2 * Math.atan(Math.exp(-y / 9 * Math.PI / 180)) - Math.PI / 2) * 180 / Math.PI;
+  G.pickPlace = false;
+  nearSetPlace(lat, ((lon + 540) % 360) - 180, '');
+  location.hash = '#search';
+}
 function nearLoad(asked) {
-  if (!navigator.geolocation) { NEAR.err = 'Dein Browser kann keinen Standort liefern.'; renderNear(); return; }
+  const S = NS();
   NEAR.busy = true; NEAR.err = ''; renderNear();
-  navigator.geolocation.getCurrentPosition(async p => {
-    NEAR.pos = [p.coords.latitude, p.coords.longitude];
+  const go = async (lat, lon) => {
+    NEAR.pos = [lat, lon];
     try { await nearFetch(); } catch (e) { NEAR.err = 'Wikipedia gerade nicht erreichbar.'; NEAR.list = null; }
     NEAR.busy = false; NEAR.at = Date.now(); renderNear();
-  }, e => {
+  };
+  if (S.mode === 'place' && S.place) { NEAR.src = 'place:' + S.place.lat; return go(S.place.lat, S.place.lon); }
+  if (!navigator.geolocation) { NEAR.busy = false; NEAR.err = 'Dein Browser kann keinen Standort liefern. Wähle eine Adresse.'; renderNear(); return; }
+  NEAR.src = 'gps';
+  navigator.geolocation.getCurrentPosition(p => go(p.coords.latitude, p.coords.longitude), e => {
     NEAR.busy = false;
-    NEAR.err = e.code === 1 ? 'Standort nicht freigegeben. Erlaube ihn in den Browser-Einstellungen für diese Seite.' : 'Standort konnte nicht bestimmt werden.';
+    NEAR.err = e.code === 1 ? 'Standort nicht freigegeben. Erlaube ihn in den Browser-Einstellungen oder wähle eine Adresse.' : 'Standort konnte nicht bestimmt werden.';
     if (asked || NEAR.list) renderNear();
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
 }
@@ -864,11 +918,14 @@ async function nearFetch() {
   NEAR.list = ((d.query && d.query.pages) || []).filter(p => p.coordinates && p.coordinates[0]).map(p => {
     const c = p.coordinates[0], k = resolve(K(lang, p.title)), read = db.nodes[k], g = gc && gc.get(k);
     const links = read ? 0 : (g ? g.c : 0);
-    // fit: already read or linked from your articles counts more than a few hundred metres
+    // fit: linked from your articles counts more than a few hundred metres; already read a little
     const fit = (read ? 1 : 0) + Math.min(3, links) - c.dist / 2500;
     return { title: p.title, desc: p.description, thumb: p.thumbnail && p.thumbnail.source, dist: c.dist, arrow: nearArrow(lat, lon, c.lat, c.lon), links, fit };
   });
   NEAR.lang = lang; NEAR.loadedR = Math.min(10000, R);
+  // a place picked on the map gets the name of the closest article
+  const S = NS();
+  if (S.mode === 'place' && S.place && !S.place.name) { const c = NEAR.list.slice().sort((a, b) => a.dist - b.dist)[0]; S.place.name = c ? 'bei ' + c.title : 'Gewählter Ort'; save(); }
 }
 
 /* ---------- reader ---------- */
@@ -1744,7 +1801,7 @@ function rebuild() {
 }
 /* ---------- alternative arrangement: timeline ---------- */
 function layoutTargets() {
-  const L = VW().layout; G.lanes = null; G.ticks = null; G.hticks = null; G.geo = L === 'map' || L === 'hist';
+  const L = VW().layout; G.lanes = null; G.ticks = null; G.hticks = null; G.geo = L === 'map' || L === 'hist'; G.layout = L;
   G.nodes.forEach(n => { n.tx = n.ty = n.x1 = undefined; });
   if (G.geo) {
     if (L === 'map' && !G.world) world();
@@ -2003,7 +2060,8 @@ function tick() {
   if (!F && V.layout !== 'net') {
     const M = G.geo ? N.filter(p => p.tx != null) : N;
     for (const p of M) { if (p.tx == null || p.fixed) continue; p.vx += (p.tx - p.x) * .09; p.vy += (p.ty - p.y) * .09; p.vx *= .55; p.vy *= .55; p.x += p.vx; p.y += p.vy; }
-    collide(M, V.layout === 'map' ? .35 : 1); G.alpha *= .97; return;
+    if (V.layout !== 'map') collide(M, 1); else for (const p of M) { p.x = p.tx; p.y = p.ty; }   // map: exact positions, no pushing apart
+    G.alpha *= .97; return;
   }
   if (N.length > 900) gridRepulse(N, a * B);
   else for (let i = 0; i < N.length; i++) {
@@ -2261,10 +2319,10 @@ function draw() {
   }
   ctx.setLineDash([]);
   // nodes (map / history: keep them visible when zoomed far out)
-  const geoR = G.geo ? 5.5 / k : 0;
+  const geoR = G.geo ? 5.5 / k : 0, isMap = G.layout === 'map';
   for (const n of G.nodes) {
     if (!shown(n)) continue;
-    const nr = Math.max(n.r, geoR);
+    const nr = isMap ? geoNr(n, k) : Math.max(n.r, geoR);
     if (n.x < vx0 - 20 || n.x > vx1 + 20 || n.y < vy0 - 20 || n.y > vy1 + 20) continue;
     let al = lit(n) ? 1 : .15;
     if (G.color !== 'recent' && V.fade && !n.ghost && n.key !== curKey) al *= Math.max(.4, 1 - (now - n.last) / (180 * 864e5));
@@ -2323,7 +2381,7 @@ function draw() {
     if (sx < -100 || sx > W + 100 || sy < -40 || sy > H + 40) continue;
     ctx.font = (n.ghost ? 'italic ' : (n === sel || n.key === curKey ? '600 ' : '')) + '12px -apple-system,Segoe UI,Roboto,sans-serif';
     const t = n.title.length > 30 ? n.title.slice(0, 28) + '…' : n.title;
-    const w = ctx.measureText(t).width, y = sy + (G.geo ? Math.max(n.r * k, 5.5) : n.r * k) + 3;
+    const w = ctx.measureText(t).width, y = sy + (G.layout === 'map' ? geoNr(n, k) * k : G.geo ? Math.max(n.r * k, 5.5) : n.r * k) + 3;
     const r = [sx - w / 2 - 2, y - 1, sx + w / 2 + 2, y + 15];
     if (placed.some(q => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1])) continue;
     placed.push(r);
@@ -2525,13 +2583,15 @@ $('tplay').onclick = () => {                         // slide the window from th
 const ptrs = new Map(); let gest = null, lastTap = null;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+// on the map, dots keep a small fixed screen size (4–8 px) so they never cover their neighbours' true positions
+const geoNr = (n, k) => (4 + Math.min(4, Math.sqrt(n.w || 1))) / k;
 function hit(sx, sy) {
   if (bubbleT() > .5) return null;
   const [wx, wy] = toWorld(sx, sy);
   let best = null, bd = Infinity;
   for (const n of G.nodes) {
     if (!shown(n)) continue;
-    const d = Math.hypot(n.x - wx, n.y - wy) - n.r;
+    const d = Math.hypot(n.x - wx, n.y - wy) - (G.layout === 'map' ? geoNr(n, G.cam.k) : n.r);
     if (d < bd) { bd = d; best = n; }
   }
   return best && bd * G.cam.k < 16 ? best : null;
@@ -2564,7 +2624,7 @@ cv.addEventListener('pointermove', e => {
     if (gest.moved) { const [wx, wy] = toWorld(e.offsetX, e.offsetY); gest.n.x = wx; gest.n.y = wy; gest.n.fixed = true; G.alpha = Math.max(G.alpha, .12); loop(); }
   } else if (gest.type === 'pinch' && ptrs.size >= 2) {
     const [a, b] = [...ptrs.values()], m = mid(a, b);
-    const k = Math.min(5, Math.max(G.geo ? .02 : .08, gest.k0 * dist(a, b) / gest.d0));
+    const k = Math.min(G.geo ? 80 : 5, Math.max(G.geo ? .02 : .08, gest.k0 * dist(a, b) / gest.d0));
     G.cam.k = k;
     G.cam.x = m.x - G.W / 2 - gest.w0[0] * k; G.cam.y = m.y - G.H / 2 - gest.w0[1] * k;
     requestDraw();
@@ -2584,15 +2644,16 @@ cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('wheel', e => {
   e.preventDefault(); G.anim = null;
   const w = toWorld(e.offsetX, e.offsetY);
-  const k = Math.min(5, Math.max(G.geo ? .02 : .08, G.cam.k * Math.exp(-e.deltaY * .0015)));
+  const k = Math.min(G.geo ? 80 : 5, Math.max(G.geo ? .02 : .08, G.cam.k * Math.exp(-e.deltaY * .0015)));
   G.cam.k = k; G.cam.x = e.offsetX - G.W / 2 - w[0] * k; G.cam.y = e.offsetY - G.H / 2 - w[1] * k;
   requestDraw();
 }, { passive: false });
 function tap(sx, sy, n) {
   const now = performance.now();
+  if (G.pickPlace && G.layout === 'map' && Date.now() < G.pickPlace) return nearPickAt(sx, sy);
   if (!n && lastTap && now - lastTap.t < 320 && Math.hypot(sx - lastTap.x, sy - lastTap.y) < 30) { // double tap = zoom in
     lastTap = null;
-    const w = toWorld(sx, sy), k = Math.min(5, G.cam.k * 2);
+    const w = toWorld(sx, sy), k = Math.min(G.geo ? 80 : 5, G.cam.k * 2);
     flyTo(sx - G.W / 2 - w[0] * k, sy - G.H / 2 - w[1] * k, k);
     return;
   }
