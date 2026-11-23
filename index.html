@@ -61,6 +61,10 @@ nav.tabs button.on{color:var(--accent)}
 .item .d{font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .badge{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--badgebg);color:var(--accent);flex:none}
 .badge.g{background:var(--ghostbg);color:var(--ghostink)}
+.nearbtn{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.nearbtn b{font-size:15px}.nearbtn span{font-size:13px;color:var(--muted)}
+.nearerr{font-size:13px;color:var(--muted);margin:8px 2px}
+.nearrow{margin:0 0 6px;align-items:center}.nearrow .nsep{flex:0 0 6px}
 h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 4px}
 .empty{color:var(--muted);text-align:center;padding:40px 20px}
 /* reader */
@@ -775,9 +779,11 @@ function renderHome() {
   home.innerHTML = '';
   const nodes = Object.values(db.nodes);
   if (!nodes.length) {
-    home.innerHTML = `<div class="empty"><svg class="logo-big" viewBox="78 84 362 350" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M132 380 L 214 300 L 262 336 L 330 228" stroke-width="15"/><path d="M352 196 L 384 142" stroke-width="11" stroke-dasharray="1 20"/></g><g fill="currentColor"><circle cx="132" cy="380" r="44"/><circle cx="214" cy="300" r="30"/><circle cx="262" cy="336" r="24"/><circle cx="330" cy="228" r="30"/></g><circle cx="392" cy="128" r="20" fill="none" stroke="var(--logoacc)" stroke-width="11"/></svg><br>Alles, was du hier liest, landet automatisch in deinem Graphen.<br><br>Fang einfach mit einer Suche an.</div>`;
+    home.appendChild(nearBox());
+    home.insertAdjacentHTML('beforeend', `<div class="empty"><svg class="logo-big" viewBox="78 84 362 350" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M132 380 L 214 300 L 262 336 L 330 228" stroke-width="15"/><path d="M352 196 L 384 142" stroke-width="11" stroke-dasharray="1 20"/></g><g fill="currentColor"><circle cx="132" cy="380" r="44"/><circle cx="214" cy="300" r="30"/><circle cx="262" cy="336" r="24"/><circle cx="330" cy="228" r="30"/></g><circle cx="392" cy="128" r="20" fill="none" stroke="var(--logoacc)" stroke-width="11"/></svg><br>Alles, was du hier liest, landet automatisch in deinem Graphen.<br><br>Fang einfach mit einer Suche an.</div>`);
     return;
   }
+  home.appendChild(nearBox());
   const an = analyze(Infinity);
   if (an.ghosts.length) {
     home.insertAdjacentHTML('beforeend', '<h2 class="sec">Verbunden mit deinem Graphen</h2>');
@@ -792,6 +798,77 @@ function renderHome() {
   const ul2 = document.createElement('ul'); ul2.className = 'list';
   nodes.sort((a, b) => b.last - a.last).slice(0, 10).forEach(n => ul2.appendChild(resultItem({ title: n.title, desc: n.desc || fmtDate(n.last) }, n.lang)));
   home.appendChild(ul2);
+}
+
+/* ---------- nearby: Wikipedia articles around you, with the ones that fit your graph first ---------- */
+const NEAR = { r: 2000, sort: 'fit', pos: null, at: 0, list: null, lang: null, busy: false, err: '' };
+function nearBox() {
+  const box = document.createElement('div'); box.id = 'nearbox';
+  renderNear(box);
+  // permission already given earlier: refresh quietly (at most every 5 minutes)
+  if (!NEAR.busy && Date.now() - NEAR.at > 3e5 && navigator.permissions && navigator.geolocation) navigator.permissions.query({ name: 'geolocation' }).then(p => { if (p.state === 'granted') nearLoad(); }).catch(() => {});
+  return box;
+}
+function nearArrow(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180, y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r), x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r);
+  const b = (Math.atan2(y, x) / r + 360) % 360;
+  return ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round(b / 45) % 8];
+}
+const fmtDist = m => m < 1000 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' km';
+function renderNear(box) {
+  box = box || $('nearbox'); if (!box) return;
+  const chip = (t, on, l) => `<button type="button" class="chip${on ? ' on' : ''}" data-n="${t}">${l}</button>`;
+  let h = `<h2 class="sec">In der Nähe</h2>`;
+  if (!NEAR.list && !NEAR.busy) {
+    h += `<button type="button" class="nearbtn" data-n="go"><b>📍 Was gibt es hier?</b><span>Wikipedia-Artikel um dich herum, passend zu deinen Themen zuerst</span></button>${NEAR.err ? `<div class="nearerr">${esc(NEAR.err)}</div>` : ''}`;
+  } else {
+    h += `<div class="frow nearrow">${chip('r:500', NEAR.r === 500, '500 m')}${chip('r:2000', NEAR.r === 2000, '2 km')}${chip('r:10000', NEAR.r === 10000, '10 km')}<span class="nsep"></span>${chip('s:fit', NEAR.sort === 'fit', 'Passend')}${chip('s:dist', NEAR.sort === 'dist', 'Nächste')}<button type="button" class="chip act" data-n="go" aria-label="Neu orten">↻</button></div>`;
+    if (NEAR.busy && !NEAR.list) h += '<div class="nearerr">Suche deinen Standort …</div>';
+  }
+  box.innerHTML = h;
+  if (NEAR.list) {
+    const ul = document.createElement('ul'); ul.className = 'list';
+    const L = NEAR.list.filter(x => x.dist <= NEAR.r).sort((a, b) => NEAR.sort === 'dist' ? a.dist - b.dist : b.fit - a.fit || a.dist - b.dist).slice(0, 15);
+    if (!L.length) ul.innerHTML = `<div class="empty">Im Umkreis von ${fmtDist(NEAR.r)} gibt es keine Artikel mit Koordinaten.</div>`;
+    L.forEach(x => {
+      const li = resultItem({ title: x.title, desc: `${x.arrow} ${fmtDist(x.dist)}${x.desc ? ' · ' + x.desc : ''}`, thumb: x.thumb, badge: x.links ? (x.links > 1 ? x.links + '× verlinkt' : 'verbunden') : '' }, NEAR.lang);
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  }
+  box.querySelectorAll('[data-n]').forEach(b => b.onclick = () => {
+    const t = b.dataset.n;
+    if (t === 'go') return nearLoad(true);
+    if (t.startsWith('r:')) { NEAR.r = +t.slice(2); if (NEAR.r > NEAR.loadedR) nearLoad(); else renderNear(); }
+    if (t.startsWith('s:')) { NEAR.sort = t.slice(2); renderNear(); }
+  });
+}
+function nearLoad(asked) {
+  if (!navigator.geolocation) { NEAR.err = 'Dein Browser kann keinen Standort liefern.'; renderNear(); return; }
+  NEAR.busy = true; NEAR.err = ''; renderNear();
+  navigator.geolocation.getCurrentPosition(async p => {
+    NEAR.pos = [p.coords.latitude, p.coords.longitude];
+    try { await nearFetch(); } catch (e) { NEAR.err = 'Wikipedia gerade nicht erreichbar.'; NEAR.list = null; }
+    NEAR.busy = false; NEAR.at = Date.now(); renderNear();
+  }, e => {
+    NEAR.busy = false;
+    NEAR.err = e.code === 1 ? 'Standort nicht freigegeben. Erlaube ihn in den Browser-Einstellungen für diese Seite.' : 'Standort konnte nicht bestimmt werden.';
+    if (asked || NEAR.list) renderNear();
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+}
+async function nearFetch() {
+  const lang = $('lang').value || 'de', [lat, lon] = NEAR.pos, R = Math.max(NEAR.r, 2000);
+  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=${Math.min(10000, R)}&ggslimit=100&prop=coordinates|pageimages|description&piprop=thumbnail&pithumbsize=96&pilimit=100&colimit=100&codistancefrompoint=${lat}|${lon}`;
+  const d = await fetch(u).then(r => r.json());
+  let gc = null; try { gc = analyze(Infinity).gc; } catch (e) { }
+  NEAR.list = ((d.query && d.query.pages) || []).filter(p => p.coordinates && p.coordinates[0]).map(p => {
+    const c = p.coordinates[0], k = resolve(K(lang, p.title)), read = db.nodes[k], g = gc && gc.get(k);
+    const links = read ? 0 : (g ? g.c : 0);
+    // fit: already read or linked from your articles counts more than a few hundred metres
+    const fit = (read ? 1 : 0) + Math.min(3, links) - c.dist / 2500;
+    return { title: p.title, desc: p.description, thumb: p.thumbnail && p.thumbnail.source, dist: c.dist, arrow: nearArrow(lat, lon, c.lat, c.lon), links, fit };
+  });
+  NEAR.lang = lang; NEAR.loadedR = Math.min(10000, R);
 }
 
 /* ---------- reader ---------- */
