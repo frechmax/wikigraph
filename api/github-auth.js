@@ -1,6 +1,8 @@
 // WikiWeb – GitHub-Login (Device Flow) als Vercel Function.
 // Leitet nur die zwei Device-Flow-Aufrufe an GitHub weiter, weil GitHub dafür kein CORS erlaubt.
-// Kein Secret nötig, speichert nichts. Umgebungsvariable in Vercel: CLIENT_ID (Client ID der GitHub OAuth App).
+// Speichert nichts. Umgebungsvariable in Vercel: CLIENT_ID (Client ID der GitHub OAuth App).
+// Optional CLIENT_SECRET: nur nötig, falls die App ablaufende Tokens ausgibt (GitHub App) – dann kann die App
+// den Token selbst erneuern (step=refresh), statt dass man sich neu anmelden muss.
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
@@ -19,6 +21,13 @@ export default async function handler(req) {
     target = 'https://github.com/login/oauth/access_token';
     params.device_code = body.device_code;
     params.grant_type = 'urn:ietf:params:oauth:grant-type:device_code';
+  } else if (step === 'refresh') {
+    const body = await req.json().catch(() => ({}));
+    if (!body.refresh_token) return Response.json({ error: 'bad_request', error_description: 'refresh_token fehlt' }, { status: 400 });
+    target = 'https://github.com/login/oauth/access_token';
+    params.grant_type = 'refresh_token';
+    params.refresh_token = body.refresh_token;
+    if (process.env.CLIENT_SECRET) params.client_secret = process.env.CLIENT_SECRET;
   } else return new Response('unbekannt', { status: 404 });
 
   const r = await fetch(target, {
