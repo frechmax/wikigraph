@@ -278,6 +278,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 .sheet .spot{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
 .sheet .spot .sname{flex:1;min-width:0;text-align:left;border:0;background:none;padding:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sheet .spot .sgo{padding:6px 11px;font-size:13px;flex:none}
+.sheet .spot .swhy{font-size:12px;color:var(--muted);flex:none;max-width:55%;text-align:right}
 .brand{display:flex;align-items:center;gap:9px}
 .logo{width:32px;height:32px;flex:none;color:var(--ink)}
 .logo-big{width:84px;height:84px;color:var(--ink);opacity:.9;margin-bottom:10px}
@@ -2826,10 +2827,17 @@ function select(n) {
     if (src.length) html += `<div class="nbh">Fundstellen: wo wird „${esc(n.title)}“ verlinkt?</div><div class="spots">${src.map(d => `<div class="spot"><button type="button" class="sname" data-k="${esc(K(d.lang, d.title))}">${esc(d.title)}</button><button type="button" class="btn sec sgo" data-go="${esc(K(d.lang, d.title))}">Zur Stelle ›</button></div>`).join('')}</div>`;
   } else if (rn.length) {
     // where do this article and each neighbour mention each other? "hier" = in this article, "dort" = in the neighbour
-    const dn = db.nodes[n.key], outN = new Set(dn ? resolvedOut(n.key, dn) : []);
+    // check every language version and compare merged keys, like analyze() does (else merged nodes lose their buttons)
+    const linksTo = (a, b) => grp(a).find(v => db.nodes[v] && resolvedOut(v, db.nodes[v]).some(o => C(o) === b));
+    const why = m => {   // no link in either text: say why they are connected anyway
+      const ev = db.edges.filter(e => { const f = C(e.f), t = C(e.t); return (f === n.key && t === m.key) || (f === m.key && t === n.key); }).sort((a, b) => b.ts - a.ts)[0];
+      if (ev) return (C(ev.f) === n.key ? 'von hier geöffnet' : 'von dort geöffnet') + ' · ' + fmtDate(ev.ts);
+      const w = wdOf(n.key).find(e => e.a === m.key || e.b === m.key);
+      return w ? 'Wikidata: ' + w.l : '';
+    };
     const row = m => {
-      const dm = db.nodes[m.key], here = outN.has(m.key), there = dm && resolvedOut(m.key, dm).includes(n.key);
-      return `<div class="spot"><button type="button" class="sname" data-k="${esc(m.key)}">${esc(m.title)}</button>${here ? `<button type="button" class="btn sec sgo" data-go="${esc(n.key)}" data-tg="${esc(m.key)}">Hier ›</button>` : ''}${there ? `<button type="button" class="btn sec sgo" data-go="${esc(m.key)}" data-tg="${esc(n.key)}">Dort ›</button>` : ''}</div>`;
+      const here = linksTo(n.key, m.key), there = linksTo(m.key, n.key), r = here || there ? '' : why(m);
+      return `<div class="spot"><button type="button" class="sname" data-k="${esc(m.key)}">${esc(m.title)}</button>${here ? `<button type="button" class="btn sec sgo" data-go="${esc(here)}" data-tg="${esc(m.key)}">Hier ›</button>` : ''}${there ? `<button type="button" class="btn sec sgo" data-go="${esc(there)}" data-tg="${esc(n.key)}">Dort ›</button>` : ''}${r ? `<span class="swhy">${esc(r)}</span>` : ''}</div>`;
     };
     html += `<div class="nbh">Gelesene Nachbarn <span class="hint">(Fundstellen: Hier = Stelle in „${esc(n.title)}“, Dort = Stelle im Nachbarn)</span></div><div class="spots">${rn.map(row).join('')}</div>`;
   }

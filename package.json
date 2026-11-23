@@ -4,7 +4,7 @@
   "description": "WikiWeb – Wikipedia-Leseverlauf als Graph. Keine Build-Schritte; package.json nur für die Tests.",
   "scripts": {
     "check": "node -e \"const s=require('fs').readFileSync('index.html','utf8');require('fs').writeFileSync('/tmp/wikiweb-check.js',s.match(/<script>([\\s\\S]*)<\\/script>/)[1])\" && node --check /tmp/wikiweb-check.js && node --check sw.js && echo syntax ok",
-    "test": "npm run check && node tests/graph.test.js && node tests/lang.test.js"
+    "test": "npm run check && node tests/graph.test.js && node tests/lang.test.js && node tests/sheet.test.js"
   },
   "devDependencies": { "jsdom": "^24.0.0" }
 }
