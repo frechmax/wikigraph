@@ -477,6 +477,10 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
     <div class="theme" id="themeSel"><button class="chip" data-th="auto">Automatisch</button><button class="chip" data-th="light">Hell</button><button class="chip" data-th="dark">Dunkel</button></div>
     <h2 class="sec">Sync zwischen Geräten</h2>
     <div class="syncbox" id="syncbox"></div>
+    <h2 class="sec">Offline</h2>
+    <p class="note">Was du liest, bleibt automatisch offline lesbar (die letzten 600 Artikel). Hier kannst du alles dauerhaft speichern.</p>
+    <div class="frow"><button type="button" class="chip" id="offT">Alle gelesenen Artikel speichern</button><button type="button" class="chip" id="offI">… mit Bildern</button></div>
+    <div class="note" id="offInfo" style="margin-top:8px"></div>
     <h2 class="sec">Daten</h2>
     <p class="note">Ohne Sync liegt dein Graph nur in diesem Browser. Exportier ihn ab und zu als JSON, um ein Backup zu haben.</p>
     <div class="btns">
@@ -484,7 +488,6 @@ mark.hlm.flash{animation:hlp .9s ease 3;outline:2px solid var(--ghost)}
       <button class="btn sec" id="imJson">JSON importieren</button>
       <button class="btn sec" id="exTtl">Als RDF (Turtle)</button>
       <button class="btn sec" id="cpTtl">Turtle kopieren</button>
-      <button class="btn sec" id="offAll">Alle gelesenen Artikel offline speichern</button>
       <button class="btn sec" id="unhide">Ausgeblendete Vorschläge zurückholen</button>
       <button class="btn warn" id="reset">Alles löschen</button>
     </div>
@@ -1341,6 +1344,7 @@ async function openArticle(lang, title, from, restore) {
   art.innerHTML = '';
   const h1 = document.createElement('h1'); h1.className = 'at'; h1.innerHTML = p.displaytitle || esc(t);
   art.appendChild(h1);
+  if (OFF().img && navigator.onLine) { const u = offImgUrls(root); setTimeout(() => offFetchImgs(u), 1500); }
   makeSections(root);
   leadFirst(root);
   const ibw = wrapInfobox(root);
@@ -3118,6 +3122,7 @@ function renderMore() {
     row.onclick = () => openTitle(e.n.lang, e.n.title, null);
     h.appendChild(row);
   }
+  offInfo(true);
 }
 function download(name, text, type) {
   try {
@@ -3395,15 +3400,71 @@ $('reset').onclick = () => {
   delete b.dataset.armed; b.textContent = 'Alles löschen'; renderMore(); toast('Gelöscht');
 };
 
-$('offAll').onclick = async () => {
-  const b = $('offAll'); if (b.dataset.run) return;
-  if (!navigator.onLine) { toast('Dafür musst du online sein'); return; }
-  b.dataset.run = 1;
-  const list = Object.values(db.nodes); let done = 0, i = 0;
-  const work = async () => { while (i < list.length) { const n = list[i++]; try { await api(n.lang, parseParams(n.title)); } catch (e) {} b.textContent = `Speichere … ${++done}/${list.length}`; } };
+/* ---------- offline: keep every read article (and optionally its images) on the device ---------- */
+const OFF = () => db.offline || (db.offline = {});
+function offSync() {          // tell the service worker
+  try { navigator.serviceWorker && navigator.serviceWorker.ready.then(r => r.active && r.active.postMessage({ type: 'cfg', cfg: { all: !!OFF().all, img: !!OFF().img } })); } catch (e) {}
+}
+// the image URLs the browser will request: srcset entry for this screen's pixel density, like the browser picks it
+function offImgUrls(root) {
+  const dpr = window.devicePixelRatio || 1, urls = new Set();
+  root.querySelectorAll('img').forEach(img => {
+    if (img.closest('.navbox,.sistersitebox,.noprint,#normdaten')) return;
+    let src = img.getAttribute('src') || '';
+    const ss = (img.getAttribute('srcset') || '').split(',').map(x => x.trim().split(/\s+/)).filter(x => x[0]).map(([u, d]) => [u, parseFloat(d) || 1]).sort((a, b) => a[1] - b[1]);
+    if (dpr > 1 && ss.length) { const c = ss.find(x => x[1] >= dpr) || ss[ss.length - 1]; src = c[0]; }
+    if (src.startsWith('//')) src = 'https:' + src;
+    if (/^https:\/\/(upload\.)?wikimedia\.org\//.test(src)) urls.add(src);
+  });
+  return [...urls];
+}
+async function offFetchImgs(urls) { let i = 0; const w = async () => { while (i < urls.length) { const u = urls[i++]; try { await fetch(u, { mode: 'cors', credentials: 'omit' }); } catch (e) {} } }; await Promise.all([w(), w(), w()]); }
+let offRun = null;
+async function offBackfill() {      // save everything you have read so far
+  if (offRun || !navigator.onLine) return;
+  const list = Object.values(db.nodes), img = !!OFF().img; let done = 0, i = 0;
+  offRun = { done: 0, n: list.length };
+  const work = async () => {
+    while (i < list.length) {
+      const n = list[i++];
+      try { const d = await api(n.lang, parseParams(n.title)); if (img && d.parse) await offFetchImgs(offImgUrls(new DOMParser().parseFromString(`<div>${d.parse.text}</div>`, 'text/html').body)); } catch (e) {}
+      offRun.done = ++done; offInfo();
+    }
+  };
   await Promise.all([work(), work()]);
-  b.textContent = `✓ ${list.length} Artikel offline verfügbar`; delete b.dataset.run;
-};
+  offRun = null; OFF().doneTs = Date.now(); save(); offInfo(true);
+}
+async function offInfo(measure) {
+  const el = $('offInfo'); if (!el) return;
+  $('offT').classList.toggle('on', !!OFF().all); $('offI').classList.toggle('on', !!OFF().img);
+  if (offRun) { el.textContent = `Speichere … ${offRun.done}/${offRun.n} Artikel`; return; }
+  if (!measure && el.dataset.m) return;
+  el.dataset.m = 1; el.textContent = 'Berechne Speicher …';
+  try {
+    const sizeOf = async name => { const c = await caches.open(name), ks = await c.keys(); let b = 0; for (const k of ks) { const r = await c.match(k); if (r) b += (await r.blob()).size; } return [ks.length, b, c, ks]; };
+    const [na, ba, ca, ka] = await sizeOf('wg-v1-articles'), [ni, bi] = await sizeOf('wg-v1-images');
+    // estimate for images: count images in the stored articles; average size from images already stored, else ~35 KB
+    let cnt = 0;
+    for (const k of ka) { try { const d = await (await ca.match(k)).json(); if (d.parse) cnt += offImgUrls(new DOMParser().parseFromString(`<div>${d.parse.text}</div>`, 'text/html').body).length; } catch (e) {} }
+    const avg = ni ? bi / ni : 35e3, reads = Object.keys(db.nodes).length, perArt = na ? ba / na : 0, perImg = na ? cnt / na : 0;
+    const est = await (navigator.storage && navigator.storage.estimate ? navigator.storage.estimate() : null);
+    const MB = b => (b / 1048576).toLocaleString('de-DE', { maximumFractionDigits: b < 10485760 ? 1 : 0 }) + ' MB';
+    el.innerHTML = `Gespeichert: <b>${na}</b> Artikel (${MB(ba)})${ni ? `, <b>${ni}</b> Bilder (${MB(bi)})` : ''}.<br>`
+      + `Alle ${reads} gelesenen Artikel als Text: ca. <b>${MB(perArt * reads)}</b>; mit Bildern zusätzlich ca. <b>${MB(perImg * reads * avg)}</b> (≈ ${Math.round(perImg)} Bilder pro Artikel${ni ? '' : ', geschätzt 35 KB je Bild'}).`
+      + (est && est.quota ? `<br>Verfügbar für WikiWeb: ${MB(est.quota)}.` : '');
+  } catch (e) { el.textContent = ''; }
+}
+async function offToggle(which) {
+  const O = OFF();
+  if (which === 'img') { O.img = !O.img; if (O.img) O.all = true; } else { O.all = !O.all; if (!O.all) O.img = false; }
+  save(); offSync(); offInfo();
+  if ((which === 'img' && !O.img) || (which === 'all' && !O.all)) { caches.delete('wg-v1-images').then(() => offInfo(true)); return; }
+  try { navigator.storage && navigator.storage.persist && await navigator.storage.persist(); } catch (e) {}   // ask the browser not to clear it under storage pressure
+  if (!navigator.onLine) toast('Gespeichert wird, sobald du online bist'); else offBackfill();
+}
+$('offT').onclick = () => offToggle('all');
+$('offI').onclick = () => offToggle('img');
+offSync();
 window.addEventListener('offline', () => toast('Offline – gelesene Artikel bleiben lesbar'));
 window.addEventListener('online', () => toast('Wieder online'));
 
