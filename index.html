@@ -156,7 +156,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--
 #article li.gallerybox .thumb img{display:block;width:100%;height:auto;margin:0}
 #article li.gallerybox .gallerytext{font-size:12px;line-height:1.3;color:var(--muted);text-align:left;padding-top:4px}
 #article li.gallerybox .gallerytext p{margin:0}
-#article .mw-editsection,#article .navbox,#article .navbox-styles,#article .noprint,#article .mw-empty-elt,#article .metadata,#article .sistersitebox,#article .ext-phonos-attribution{display:none!important}
+#article .mw-editsection,#article .navbox,#article .nomobile,#article table.sidebar,#article .vertical-navbox,#article .navbox-styles,#article .noprint,#article .mw-empty-elt,#article .metadata,#article .sistersitebox,#article .ext-phonos-attribution{display:none!important}
 #article sup.reference{font-size:11px}
 #article .hatnote,#article .dablink{font-size:14px;color:var(--muted);font-style:italic}
 #article ol.references,#article .reflist{font-size:13px}
@@ -1393,7 +1393,7 @@ async function openArticle(lang, title, from, restore) {
   const ns0 = new Set((p.links || []).filter(l => l.ns === 0 && l.exists !== false).map(l => l.title));
   const doc = new DOMParser().parseFromString(`<div>${p.text}</div>`, 'text/html');
   const root = doc.body.firstElementChild;
-  root.querySelectorAll('link,.mw-editsection,.navbox,.navbox-styles,.sistersitebox,.noprint,#normdaten').forEach(e => e.remove());
+  root.querySelectorAll('link,.mw-editsection,.navbox,.navbox-styles,.sistersitebox,.noprint,#normdaten,.nomobile,table.sidebar,.vertical-navbox').forEach(e => e.remove());   // series sidebars: mobile Wikipedia hides them too (.nomobile)
   root.querySelectorAll('.ext-phonos-PhonosButton').forEach(b => {
     let src = null; try { src = JSON.parse(b.dataset.ooui || '{}').href; } catch (e) {}
     if (!src) { b.remove(); return; }
@@ -3558,7 +3558,7 @@ function offSync() {          // tell the service worker
 function offImgUrls(root) {
   const dpr = window.devicePixelRatio || 1, urls = new Set();
   root.querySelectorAll('img').forEach(img => {
-    if (img.closest('.navbox,.sistersitebox,.noprint,#normdaten')) return;
+    if (img.closest('.navbox,.sistersitebox,.noprint,#normdaten,.nomobile,table.sidebar,.vertical-navbox')) return;
     let src = img.getAttribute('src') || '';
     const ss = (img.getAttribute('srcset') || '').split(',').map(x => x.trim().split(/\s+/)).filter(x => x[0]).map(([u, d]) => [u, parseFloat(d) || 1]).sort((a, b) => a[1] - b[1]);
     if (dpr > 1 && ss.length) { const c = ss.find(x => x[1] >= dpr) || ss[ss.length - 1]; src = c[0]; }
