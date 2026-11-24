@@ -554,6 +554,17 @@ const IDENT = new Set([
   'Internationales Phonetisches Alphabet', 'International Phonetic Alphabet', 'Help:IPA', 'Mathematical Reviews', 'ZbMATH', 'ZbMATH Open', 'Zentralblatt MATH',
   'Hochschulbibliothekszentrum', 'Bibliotheksverbund Bayern', 'Karlsruher Virtueller Katalog', 'Systematik der Bibliothek'
 ]);
+/* linked from everywhere but say nothing about the topic: languages, years, dates -> never suggested (still shown once read) */
+const BLAND_KEEP = /^(Formale|Natürliche|Künstliche|Formal|Natural|Constructed|Programming|Markup|Query|Modeling|Modelling|Scripting|Assembly|Sign) (Sprache|language)$/i;
+const MON = 'Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember|January|February|March|May|June|July|October|December';
+const BLAND = [
+  /^[A-ZÄÖÜ][\wäöüß-]* Sprache$/, /^[A-Z][\w'-]*( [A-Z][\w'-]*)? language$/, /^(Latein|Latin|Altgriechisch|Ancient Greek|Hochchinesisch|Mandarin Chinese|Standard Chinese|Lingua franca)$/,
+  /^\d{1,4}( v\. Chr\.| BC| AD)?$/, /^\d{1,4}(er|s)( v\. Chr\.| BC)?$/, /^\d{1,2}\. (Jahrhundert|Jahrtausend)( v\. Chr\.)?$/, /^\d{1,2}(st|nd|rd|th) (century|millennium)( BC| AD)?$/i,
+  new RegExp('^\\d{1,2}\\. (' + MON + ')$'), new RegExp('^(' + MON + ') \\d{1,2}$'), new RegExp('^(' + MON + ')$')
+];
+const blandMemo = new Map();
+const isBland = t => { let v = blandMemo.get(t); if (v === undefined) { v = !BLAND_KEEP.test(t) && BLAND.some(r => r.test(t)); blandMemo.set(t, v); } return v; };
+const blandK = k => isBland(k.slice(k.indexOf(':') + 1));
 const identMemo = new Map();
 const identCached = t => { let v = identMemo.get(t); if (v === undefined) { v = isIdent(t); identMemo.set(t, v); } return v; };
 const isIdent = t => IDENT.has(t) || /\((identifier|Identifikator)\)$/i.test(t) || /^(ISBN|ISSN|DOI|PMID|OCLC|ASIN)\b/.test(t);
@@ -1708,6 +1719,7 @@ function analyzeRaw(tMax, tMin = -Infinity) {
         if (!ex) { const nl = { s: a, t: k, type: 'sem', c: 1, w: 1 }; pairs.set(id, nl); links.push(nl); }
         else if (ex.type === 'sem' && ex.s !== a) ex.w = (ex.w || 1) + 1;   // linked in both directions
       } else {
+        if (blandK(k)) continue;
         let g = gc.get(k);
         if (!g) { g = { key: k, title: k.slice(pre.length), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
         if (g.from[g.from.length - 1] !== a) { const inHl = !!(hs && hs.has(k)); if (inHl) { g.hl = true; g.sh = (g.sh || 0) + 2 * wt; } g.c++; g.sl = (g.sl || 0) + wt; g.from.push(a); g.fw.push(inHl ? wt * 3 : wt); }
@@ -1722,7 +1734,7 @@ function analyzeRaw(tMax, tMin = -Infinity) {
     for (const [tg, c] of n.cs.l) {
       const k = resolve(pre + tg);
       if (idx.has(k) && k !== a) { const j = idx.get(k), l = pairs.get(ai < j ? ai * N + j : j * N + ai); if (l) l.w = (l.w || 1) + 5 * c / n.cs.t; continue; }
-      if (k === a || hidden.has(k) || identCached(tg)) continue;
+      if (k === a || hidden.has(k) || identCached(tg) || blandK(k)) continue;
       let g = gc.get(k);
       if (!g) { g = { key: k, title: k.slice(pre.length), lang: n.lang, c: 0, s: 0, from: [], fw: [] }; gc.set(k, g); }
       const p = c / n.cs.t;
@@ -1802,10 +1814,10 @@ function localSug(n) {
   const d = db.nodes[n.key]; if (!d) return [];
   const hidden = new Set(db.hidden || []);
   return (d.out || []).map((o, i) => ({ o, i, k: resolve(K(n.lang, o)) }))
-    .filter(x => !isIdent(x.o) && !db.nodes[x.k] && !hidden.has(x.k))
+    .filter(x => !isIdent(x.o) && !blandK(x.k) && !db.nodes[x.k] && !hidden.has(x.k))
     .map(x => ({ ...x, c: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).c : 1) }))
     .map(x => ({ ...x, s: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).s : 0), p: csP(d, x.k) }))
-    .concat((d.cs && d.cs.t ? d.cs.l : []).map(([tg]) => ({ o: tg, i: 9999, k: resolve(K(n.lang, tg)) })).filter(x => !(d.out || []).some(o => resolve(K(n.lang, o)) === x.k) && !db.nodes[x.k] && !hidden.has(x.k) && x.k !== n.key && !isIdent(x.o)).map(x => ({ ...x, c: 1, s: 0, p: csP(d, x.k) })))
+    .concat((d.cs && d.cs.t ? d.cs.l : []).map(([tg]) => ({ o: tg, i: 9999, k: resolve(K(n.lang, tg)) })).filter(x => !(d.out || []).some(o => resolve(K(n.lang, o)) === x.k) && !db.nodes[x.k] && !hidden.has(x.k) && x.k !== n.key && !isIdent(x.o) && !blandK(x.k)).map(x => ({ ...x, c: 1, s: 0, p: csP(d, x.k) })))
     .sort((a, b) => { const R = RK(); return (R.cs ? b.p - a.p : 0) || (R.links ? b.c - a.c : 0) || b.s - a.s || a.i - b.i; }).slice(0, 8);
 }
 function addTemp(n) {
