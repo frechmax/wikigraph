@@ -1818,7 +1818,8 @@ function localSug(n) {
     .map(x => ({ ...x, c: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).c : 1) }))
     .map(x => ({ ...x, s: (G.gc && G.gc.get(x.k) ? G.gc.get(x.k).s : 0), p: csP(d, x.k) }))
     .concat((d.cs && d.cs.t ? d.cs.l : []).map(([tg]) => ({ o: tg, i: 9999, k: resolve(K(n.lang, tg)) })).filter(x => !(d.out || []).some(o => resolve(K(n.lang, o)) === x.k) && !db.nodes[x.k] && !hidden.has(x.k) && x.k !== n.key && !isIdent(x.o) && !blandK(x.k)).map(x => ({ ...x, c: 1, s: 0, p: csP(d, x.k) })))
-    .sort((a, b) => { const R = RK(); return (R.cs ? b.p - a.p : 0) || (R.links ? b.c - a.c : 0) || b.s - a.s || a.i - b.i; }).slice(0, 8);
+    .sort((a, b) => { const R = RK(); return (R.cs ? b.p - a.p : 0) || (R.links ? b.c - a.c : 0) || b.s - a.s || a.i - b.i; })
+    .filter((x, i, arr) => arr.findIndex(y => y.k === x.k) === i).slice(0, 8);   // redirects (e.g. "Ungerichteter Graph") point to the same article: list it once
 }
 function addTemp(n) {
   clearTemp();
@@ -1952,16 +1953,20 @@ function layoutTargets() {
   if (L === 'time') {
     const vis = G.nodes.filter(n => !n.ghost), first = n => (db.nodes[n.key] || {}).first || 0;
     vis.sort((a, b) => first(a) - first(b));
-    const order = []; vis.forEach(n => { if (!order.includes(n.cl)) order.push(n.cl); });
+    // only the biggest themes get their own lane (40 lanes don't fit on a phone); the rest share "Weitere Themen"
+    const size = new Map(); vis.forEach(n => size.set(n.cl, (size.get(n.cl) || 0) + 1));
+    const big = new Set([...size].filter(([c]) => c >= 0).sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0]));
+    const lane = c => big.has(c) ? c : -1, rest = vis.some(n => n.cl >= 0 && !big.has(n.cl));
+    const order = []; vis.forEach(n => { if (!order.includes(lane(n.cl))) order.push(lane(n.cl)); });
     order.sort((a, b) => (a < 0) - (b < 0));
     const laneY = new Map(order.map((c, i) => [c, (i - (order.length - 1) / 2) * 120]));
     const X = i => (i - (vis.length - 1) / 2) * 46;
-    vis.forEach((n, i) => { n.tx = X(i); n.ty = laneY.get(n.cl); });
+    vis.forEach((n, i) => { n.tx = X(i); n.ty = laneY.get(lane(n.cl)); });
     for (const g of G.nodes) if (g.ghost) {
       const src = g.from.map(f => G.by.get(f)).filter(m => m && m.tx != null);
-      g.tx = (src.length ? Math.max(...src.map(m => m.tx)) : 0) + 60; g.ty = (laneY.get(g.cl) ?? (src[0] ? src[0].ty : 0)) + 45;
+      g.tx = (src.length ? Math.max(...src.map(m => m.tx)) : 0) + 60; g.ty = (laneY.get(lane(g.cl)) ?? (src[0] ? src[0].ty : 0)) + 45;
     }
-    G.lanes = order.map(c => ({ y: laneY.get(c), name: c >= 0 && G.clusters[c] ? G.clusters[c].name : 'Ohne Thema', color: c >= 0 ? pal(c) : TC.sem }));
+    G.lanes = order.map(c => ({ y: laneY.get(c), name: c >= 0 && G.clusters[c] ? G.clusters[c].name : rest ? 'Weitere Themen' : 'Ohne Thema', color: c >= 0 ? pal(c) : TC.sem }));
     G.ticks = []; let lastM = '';
     vis.forEach((n, i) => { const m = new Date(first(n)).toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }); if (m !== lastM) { G.ticks.push({ x: X(i) - 23, label: m }); lastM = m; } });
   }
@@ -2127,7 +2132,7 @@ function computeFocus() {
   const n = G.focus && G.by.get(G.focus);
   if (!n) { $('focuschip').classList.remove('on'); return; }
   const set = new Set([n]), dist = new Map([[n, 0]]); let front = [n];
-  for (let d = 0; d < G.focusDepth; d++) { const nx = []; for (const m of front) for (const o of m.adj) if (!set.has(o)) { set.add(o); dist.set(o, d + 1); nx.push(o); } front = nx; }
+  for (let d = 0; d < G.focusDepth; d++) { const nx = []; for (const m of front) for (const o of m.adj) if (!o.temp && !set.has(o)) { set.add(o); dist.set(o, d + 1); nx.push(o); } front = nx; }
   G.focusSet = set; G.focusDist = dist;
   const fc = $('focuschip');
   fc.innerHTML = `<span>Fokus: <b>${esc(n.title)}</b></span><button type="button" data-d>${G.focusDepth === 1 ? '1 Schritt' : '2 Schritte'}</button><button type="button" data-x aria-label="Fokus beenden">✕</button>`;
@@ -2319,11 +2324,27 @@ function bubbleT() {
   if (VW().layout !== 'net') return 0;
   return Math.max(0, Math.min(1, (.42 - G.cam.k) / .14));
 }
+let bgeoMemo = null;
 function bubbleGeo() {
-  return G.clusters.map(c => {
+  const geo = G.clusters.map(c => {
     let x = 0, y = 0; c.members.forEach(m => { x += m.x; y += m.y; }); x /= c.members.length; y /= c.members.length;
     return { c, x, y, r: 26 + Math.sqrt(c.members.length) * 22 };
   });
+  const sig = geo.map(g => Math.round(g.x) + ',' + Math.round(g.y)).join(';');
+  if (bgeoMemo && bgeoMemo.sig === sig && bgeoMemo.n === geo.length) return bgeoMemo.geo;
+  // overview only: push overlapping bubbles apart so each stays visible, tappable and labelled
+  for (let it = 0; it < 60; it++) {
+    let moved = false;
+    for (let i = 0; i < geo.length; i++) for (let j = i + 1; j < geo.length; j++) {
+      const a = geo[i], b = geo[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .01, min = a.r + b.r + 8;
+      if (d >= min) continue;
+      const push = (min - d) / 2, ux = dx / d || 1, uy = dy / d;
+      a.x -= ux * push; a.y -= uy * push; b.x += ux * push; b.y += uy * push; moved = true;
+    }
+    if (!moved) break;
+  }
+  bgeoMemo = { sig, n: geo.length, geo };
+  return geo;
 }
 function drawBubbles(t) {
   const geo = bubbleGeo(), k = G.cam.k;
@@ -2343,7 +2364,7 @@ function drawBubbleLabels(t) {
   const { dpr } = G; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const placed = [];
-  for (const g of bubbleGeo().sort((a, b) => b.c.members.length - a.c.members.length)) {
+  for (const g of bubbleGeo().slice().sort((a, b) => b.c.members.length - a.c.members.length)) {
     const [sx, sy] = toScreen(g.x, g.y);
     const name = g.c.name.length > 22 ? g.c.name.slice(0, 20) + '…' : g.c.name;
     ctx.font = '600 13px -apple-system,Segoe UI,Roboto,sans-serif';
@@ -2524,8 +2545,12 @@ function fitNodes(list, maxK, instant) {
   for (const n of list) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
   const w = Math.max(80, x1 - x0), h = Math.max(80, y1 - y0);
   const occ = sheetOcc(), ox = sheetOccX(), top = G.focusSet ? 48 : 0;   // focus chip sits at the top
-  const k = Math.min(maxK || 2.2, Math.max(G.geo ? .02 : .12, Math.min((G.W - ox) / (w + 90), (G.H - occ - top) / (h + 110))));
-  flyTo(-(x0 + x1) / 2 * k - ox / 2, -(y0 + y1) / 2 * k - (occ - top) / 2, k);
+  // margins in screen pixels (in world units they vanish at small zoom, e.g. map / history, and labels got cut off)
+  const aw = Math.max(40, G.W - ox - 80), ah = Math.max(40, G.H - occ - top - 90), long = G.layout === 'time' && !G.focusSet;
+  const k = Math.min(maxK || 2.2, Math.max(G.geo ? .02 : .12, long ? ah / h : Math.min(aw / w, ah / h)));
+  // timeline: fit the lanes in height and show the newest articles; older ones are a swipe to the left
+  const cx = long && w * k > aw ? x1 - aw / 2 / k : (x0 + x1) / 2;
+  flyTo(-cx * k - ox / 2, -(y0 + y1) / 2 * k - (occ - top) / 2, k);
   if (instant) { G.cam = { ...G.anim.to }; G.anim = null; }
 }
 function fit() { fitNodes(G.nodes.filter(shown)); }
@@ -2725,10 +2750,11 @@ function hit(sx, sy) {
   }
   return best && bd * G.cam.k < 16 ? best : null;
 }
+let slop = 6;   // how far a finger may wobble and still count as a tap (fingers move more than a mouse)
 function startPan(p) { gest = { type: 'pan', sx: p.x, sy: p.y, cx: G.cam.x, cy: G.cam.y, moved: false }; }
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId);
-  G.anim = null;
+  G.anim = null; slop = e.pointerType === 'mouse' ? 5 : 12;
   ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
   if (ptrs.size === 1) {
     const n = hit(e.offsetX, e.offsetY);
@@ -2746,10 +2772,10 @@ cv.addEventListener('pointermove', e => {
   if (!gest) return;
   if (gest.type === 'pan' && ptrs.size === 1) {
     const p = ptrs.get(e.pointerId), dx = p.x - gest.sx, dy = p.y - gest.sy;
-    if (Math.hypot(dx, dy) > 6) gest.moved = true;
+    if (Math.hypot(dx, dy) > slop) gest.moved = true;
     if (gest.moved) { G.cam.x = gest.cx + dx; G.cam.y = gest.cy + dy; requestDraw(); }
   } else if (gest.type === 'node' && ptrs.size === 1) {
-    if (Math.hypot(e.offsetX - gest.sx, e.offsetY - gest.sy) > 6) gest.moved = true;
+    if (Math.hypot(e.offsetX - gest.sx, e.offsetY - gest.sy) > slop) gest.moved = true;
     if (gest.moved) { const [wx, wy] = toWorld(e.offsetX, e.offsetY); gest.n.x = wx; gest.n.y = wy; gest.n.fixed = true; G.alpha = Math.max(G.alpha, .12); loop(); }
   } else if (gest.type === 'pinch' && ptrs.size >= 2) {
     const [a, b] = [...ptrs.values()], m = mid(a, b);
@@ -2796,7 +2822,7 @@ function tap(sx, sy, n) {
   lastTap = { t: now, x: sx, y: sy, n };
   if (!n && bubbleT() > .5) {
     const [wx, wy] = toWorld(sx, sy);
-    const g = bubbleGeo().filter(g => Math.hypot(g.x - wx, g.y - wy) < g.r).sort((a, b) => a.r - b.r)[0];
+    const g = bubbleGeo().map(g => ({ ...g, d: Math.hypot(g.x - wx, g.y - wy) / g.r })).filter(g => g.d < 1).sort((a, b) => a.d - b.d)[0];   // overlapping bubbles: the one whose centre (and label) is closest wins, not the smallest
     if (g) { G.hiCl = g.c.id; renderGraphHeader(analyze(G.tMax, G.tMin)); fitNodes(g.c.members, 1.2); return; }
   }
   if (n) { select(n); centerOn(n, G.cam.k); return; }
