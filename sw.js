@@ -17,17 +17,32 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(V + '-shell').then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => !k.startsWith(V)).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => !k.startsWith(V)).map(k => caches.delete(k)))).then(migrateArticles).then(() => self.clients.claim()));
 });
+/* articles are stored under host + page only, so changing the request parameters (e.g. adding prop=langlinks)
+   never makes saved articles unreachable offline again */
+const artKey = u => u.origin + '/w/api.php?action=parse&page=' + encodeURIComponent((u.searchParams.get('page') || '').replace(/_/g, ' '));
+const isParse = u => /\.wikipedia\.org$/.test(u.hostname) && u.pathname.endsWith('/api.php') && u.searchParams.get('action') === 'parse';
+async function migrateArticles() {   // one-time per activation: move entries stored under the full request URL to artKey
+  try {
+    const c = await caches.open(V + '-articles');
+    for (const k of await c.keys()) {
+      const u = new URL(k.url), nk = artKey(u);
+      if (!isParse(u) || k.url === nk) continue;
+      if (!(await c.match(nk))) { const r = await c.match(k); if (r) await c.put(nk, r); }
+      await c.delete(k);
+    }
+  } catch (e) {}
+}
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const u = new URL(req.url);
   if (u.origin === location.origin) { e.respondWith(netFirst(req, V + '-shell', 2500)); return; }
   if (/\.wikipedia\.org$/.test(u.hostname)) {
-    const parse = u.pathname.endsWith('/api.php') && u.searchParams.get('action') === 'parse';
+    const parse = isParse(u);
     const summary = u.pathname.includes('/rest_v1/page/summary/');
-    if (parse) e.respondWith(cfg().then(c => netFirst(req, V + '-articles', 5000, c.all ? 0 : 600)));   // "alles offline": no limit
+    if (parse) e.respondWith(cfg().then(c => netFirst(req, V + '-articles', 5000, c.all ? 0 : 600, artKey(u))));   // "alles offline": no limit
     else if (summary) e.respondWith(netFirst(req, V + '-previews', 4000, 400));
   }
   if (isImg(u)) { e.respondWith(cfg().then(c => c.img ? imgFirst(req) : fetch(req))); return; }
@@ -35,10 +50,10 @@ self.addEventListener('fetch', e => {
 });
 
 /* network first (fresh content), cache as fallback when offline or slow */
-async function netFirst(req, name, timeout, max) {
+async function netFirst(req, name, timeout, max, key = req) {
   const cache = await caches.open(name);
   const net = fetch(req).then(res => {
-    if (res && res.ok) { const c = res.clone(); cache.delete(req).then(() => cache.put(req, c)).then(() => max && trim(cache, max)); }
+    if (res && res.ok) { const c = res.clone(); cache.delete(key).then(() => cache.put(key, c)).then(() => max && trim(cache, max)); }
     return res;
   });
   net.catch(() => {});
@@ -48,7 +63,7 @@ async function netFirst(req, name, timeout, max) {
     const r = await Promise.race([net, to]);
     if (r !== 'TIMEOUT') { clearTimeout(timer); return r; }
   } catch (e) {}
-  const hit = (await cache.match(req)) || (req.mode === 'navigate' ? (await cache.match('./')) || (await cache.match('index.html')) : null);
+  const hit = (await cache.match(key)) || (key !== req && (await cache.match(req))) || (req.mode === 'navigate' ? (await cache.match('./')) || (await cache.match('index.html')) : null);
   if (hit) return hit;
   return net;
 }
