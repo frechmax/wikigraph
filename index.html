@@ -3465,6 +3465,7 @@ async function syncNow() {
       syMuted = true; save(); syMuted = false;
       G.dirty = true; G.fitted = false;
       if (gOn()) { rebuild(); heat(.2); } else if (view === 'search') renderHome(); else if (view === 'notes') renderNotes();
+      setTimeout(offTopUp, 3000);   // articles read on the other device: save them here too
     }
     if (after !== remote) await writeGist(after);
     sy.last = Date.now(); syErr = ''; delete sy.expired; sySave();
@@ -3609,9 +3610,46 @@ function offImgUrls(root) {
 // store images directly in the image cache (doesn't depend on the service worker having the new setting yet)
 async function offFetchImgs(urls) {
   let c = null; try { c = await caches.open('wg-v1-images'); } catch (e) { }
-  let i = 0;
-  const w = async () => { while (i < urls.length) { const u = urls[i++]; try { if (c && await c.match(u)) continue; const r = await fetch(u, { mode: 'cors', credentials: 'omit' }); if (c && r.ok && OFF().img) await c.put(u, r); } catch (e) { } } };
+  let i = 0, fail = 0;
+  const w = async () => { while (i < urls.length) { const u = urls[i++]; try { if (c && await c.match(u)) continue; const r = await fetch(u, { mode: 'cors', credentials: 'omit' }); if (c && r.ok && OFF().img) await c.put(u, r); else fail++; } catch (e) { fail++; } } };
   await Promise.all([w(), w(), w()]);
+  return fail;
+}
+/* top-up: keep saving what is still missing (articles read on another device and synced here, images whose download
+   failed, articles opened offline). Per device, so it lives in localStorage: 1 = text saved, 2 = text + all images */
+const OFFDONE_K = 'wg-offdone';
+let offDone = {}; try { offDone = JSON.parse(localStorage.getItem(OFFDONE_K) || '{}') || {}; } catch (e) {}
+const offDoneSave = () => { try { localStorage.setItem(OFFDONE_K, JSON.stringify(offDone)); } catch (e) {} };
+const offArtUrl = (lang, page) => `https://${lang}.wikipedia.org/w/api.php?action=parse&page=` + encodeURIComponent(page.replace(/_/g, ' '));   // same key as sw.js artKey
+let offTopRun = false;
+async function offTopUp() {
+  const O = OFF(), need = O.img ? 2 : 1;
+  if (!O.all || offRun || offTopRun || !navigator.onLine) return;
+  let ac = null; try { ac = await caches.open('wg-v1-articles'); } catch (e) { return; }
+  // browser cleared the storage but localStorage survived: start over
+  const have = (await ac.keys()).length, marked = Object.values(offDone).filter(v => v >= 1).length;
+  if (marked > 20 && have < marked / 2) { offDone = {}; offDoneSave(); }
+  const list = Object.values(db.nodes).filter(n => (offDone[K(n.lang, n.title)] || 0) < need);
+  if (!list.length) return;
+  offTopRun = true; let i = 0;
+  const work = async () => {
+    while (i < list.length && navigator.onLine && OFF().all) {
+      const n = list[i++], k = K(n.lang, n.title), page = db.alias[k] || n.title;
+      try {
+        const hit = (await ac.match(offArtUrl(n.lang, page))) || (await ac.match(offArtUrl(n.lang, n.title)));
+        const d = hit ? await hit.json() : await api(n.lang, parseParams(page));
+        // without an active service worker the fetched article was not stored: try again next time
+        if (!d || !d.parse || (!hit && !(navigator.serviceWorker && navigator.serviceWorker.controller))) continue;
+        let lvl = 1;
+        if (need === 2 && !(await offFetchImgs(offImgUrls(new DOMParser().parseFromString(`<div>${d.parse.text}</div>`, 'text/html').body)))) lvl = 2;
+        if (lvl > (offDone[k] || 0)) { offDone[k] = lvl; offDoneSave(); }
+      } catch (e) {}
+      await new Promise(r => setTimeout(r, 200));   // stay in the background, don't hog the connection
+    }
+  };
+  await Promise.all([work(), work()]);
+  offTopRun = false;
+  if ($('offInfo') && $('offInfo').dataset.m) offInfo(true);
 }
 let offRun = null;
 async function offBackfill() {      // save everything you have read so far
@@ -3627,6 +3665,7 @@ async function offBackfill() {      // save everything you have read so far
   };
   await Promise.all([work(), work()]);
   offRun = null; OFF().doneTs = Date.now(); if (img) OFF().imgV = 2; save(); offInfo(true);
+  offTopUp();   // checks what really got stored and retries the rest
 }
 async function offInfo(measure) {
   const el = $('offInfo'); if (!el) return;
@@ -3652,7 +3691,10 @@ async function offToggle(which) {
   const O = OFF();
   if (which === 'img') { O.img = !O.img; if (O.img) O.all = true; } else { O.all = !O.all; if (!O.all) O.img = false; }
   save(); offSync(); offInfo();
-  if ((which === 'img' && !O.img) || (which === 'all' && !O.all)) { caches.delete('wg-v1-images').then(() => offInfo(true)); return; }
+  if ((which === 'img' && !O.img) || (which === 'all' && !O.all)) {
+    for (const k in offDone) if (!O.all) delete offDone[k]; else if (offDone[k] > 1) offDone[k] = 1;   // images are deleted below
+    offDoneSave(); caches.delete('wg-v1-images').then(() => offInfo(true)); return;
+  }
   try { navigator.storage && navigator.storage.persist && await navigator.storage.persist(); } catch (e) {}   // ask the browser not to clear it under storage pressure
   if (!navigator.onLine) toast('Gespeichert wird, sobald du online bist'); else offBackfill();
 }
@@ -3662,7 +3704,8 @@ setTimeout(() => { if (OFF().img && (OFF().imgV || 0) < 2 && navigator.onLine) o
 $('offI').onclick = () => offToggle('img');
 offSync();
 window.addEventListener('offline', () => toast('Offline – gelesene Artikel bleiben lesbar'));
-window.addEventListener('online', () => toast('Wieder online'));
+window.addEventListener('online', () => { toast('Wieder online'); setTimeout(offTopUp, 5000); });
+setTimeout(offTopUp, 10000);
 
 /* first-start introduction */
 /* ---------- coach marks: tips shown on the real interface, once each ---------- */
