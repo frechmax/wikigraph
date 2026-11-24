@@ -2643,7 +2643,7 @@ $('gFilter').onclick = () => {
 };
 
 /* ---------- time window: one slider moves a window of adjustable length ---------- */
-const SPANS = [[0, 'Alles'], [1, 'Tag'], [3, '3 Tage'], [7, 'Woche'], [30, 'Monat'], [91, '3 Monate'], [365, 'Jahr']];
+const SPANS = [[0, 'Alles'], [.5, '12 h'], [1, 'Tag'], [3, '3 Tage'], [7, 'Woche'], [30, 'Monat'], [91, '3 Monate'], [365, 'Jahr']];
 const TW = { span: 0, v: 1000 };
 function twBounds() {
   const ts = Object.values(db.nodes).map(n => n.first);
@@ -2662,7 +2662,8 @@ function twApply(fitAfter) {
     const end = TW.v >= 1000 ? t1 : lo + (t1 - lo) * TW.v / 1000;
     G.tMax = TW.v >= 1000 ? Infinity : end;
     G.tMin = end - d;
-    lab.textContent = fmtDate(end - d) + ' – ' + (TW.v >= 1000 ? 'heute' : fmtDate(end));
+    const f = TW.span < 1 ? ts => new Date(ts).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : fmtDate;   // short windows need the time of day
+    lab.textContent = f(end - d) + ' – ' + (TW.v >= 1000 ? (TW.span < 1 ? 'jetzt' : 'heute') : f(end));
   }
   sl.value = TW.v;
   if (!twSpans().some(x => x[0] === TW.span)) { TW.span = 0; return twApply(fitAfter); }

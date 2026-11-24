@@ -17,6 +17,9 @@ setTimeout(async()=>{ try{
  w.eval(`untangle(true); for(let i=0;i<600;i++) tick();`); console.log('after relayout:', sep(), 'boost', w.eval('G.boost.toFixed(2)'));
  w.eval(`setLayout('time'); for(let i=0;i<200;i++) tick(); draw();`); console.log('time lanes', w.eval('JSON.stringify(G.lanes.map(l=>l.name))'), 'ticks', w.eval('G.ticks.length'), sep());
  w.eval(`document.getElementById('gUntangle').click(); for(let i=0;i<50;i++) tick(); document.getElementById('gFilter').click(); console.log(document.getElementById('popbody').querySelectorAll('.chip').length); document.querySelector('[data-t="v:ghostLines"]').click(); document.querySelector('[data-t="v:layout:net"]').click(); db.view.layout='radial'; console.log('vw',VW().layout); for(let i=0;i<100;i++) tick(); draw(); select(G.nodes.find(n=>!n.ghost)); draw();`); console.log('net back ok', sep());
+ // time window: 12 h span (seed spans 60 days, so it is offered)
+ w.eval(`TW.span=.5; TW.v=1000; twApply();`); console.log('12h:', w.eval(`document.getElementById('tspan').textContent+' | '+document.getElementById('tlab').textContent+' | nodes '+G.nodes.filter(n=>!n.ghost).length`));
+ w.eval(`TW.span=0; TW.v=1000; twApply();`);
  // focus: empty tap with sheet open only closes the sheet, the next empty tap leaves focus; a double tap keeps focus
  const st=()=>w.eval(`JSON.stringify({focus:!!G.focus, sheet:!!G.sel})`);
  w.eval(`closeSheet(); const f=G.nodes.find(n=>!n.ghost); setFocus(f.key); select(f); tap(5,5,null);`); await new Promise(r=>setTimeout(r,400)); console.log('focus tap1 (sheet open)', st());
